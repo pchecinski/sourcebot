@@ -140,7 +140,7 @@ class DiscordClient(discord.Client):
         if message.author == self.user:
             return
 
-        if message.channel.name not in config['discord']['chanells']:
+        if not isinstance(message.channel, discord.DMChannel) and message.channel.name not in config['discord']['chanells']:
             return
 
         for match in re.finditer("(?<=https://www.pixiv.net/en/artworks/)\w+", message.content):
