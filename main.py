@@ -11,12 +11,54 @@ import shlex
 import subprocess
 import yaml
 
+from discord.ext import commands
 from pprint import pprint
 from pathlib import Path
 from zipfile import ZipFile
 
-config = yaml.safe_load(open("config.yml"))
+MAIN_CONFIG = "config/main.yml"
+ROLES_SETTINGS = "config/roles.yml"
 
+# Load config files
+config = yaml.safe_load(open(MAIN_CONFIG))
+roles_settings = yaml.safe_load(open(ROLES_SETTINGS))
+
+# Prepare bot with intents
+intents = discord.Intents.default()
+intents.members = True
+intents.reactions = True
+bot = commands.Bot(command_prefix='$', intents=intents)
+
+# Role reactions
+async def handle_reaction(payload):
+    # Check if reaction was added/removed in the right channel
+    channel = bot.get_channel(payload.channel_id)
+    if not channel.name == config['discord']['role_channel']:
+        return
+
+    # Parse emoji as string (works for custom emojis and unicode)
+    emoji = str(payload.emoji)
+
+    # Fetch message and and member
+    message = await channel.fetch_message(payload.message_id)
+    guild = bot.get_guild(payload.guild_id)
+    member = guild.get_member(payload.user_id)
+
+    # Remove reaction if it isn't in roles dictionary
+    if not emoji in roles_settings['roles']:
+        await message.remove_reaction(payload.emoji, member)
+        return
+
+    # Get role from settings
+    role = guild.get_role(roles_settings['roles'][emoji])
+
+    if payload.event_type == 'REACTION_ADD':
+        await member.add_roles(role, reason='emoji_role_add')
+
+    if payload.event_type == 'REACTION_REMOVE':
+        await member.remove_roles(role, reason='emoji_role_remove')
+
+# Source fetching functions
 async def handlePixivUrl(message, submission_id):
     await message.channel.trigger_typing()
 
@@ -132,26 +174,55 @@ async def handleFuraffinityUrl(message, submission_id):
 
     await message.channel.send(content=f"{submission.title} by {submission.author}", file=discord.File(path))
 
-class DiscordClient(discord.Client):
-    async def on_ready(self):
-        print(f"{self.user.name} has connected to Discord!")
+# Events 
+@bot.event
+async def on_ready():
+    print(f"The great and only {bot.user.name} has connected to Discord!")
 
-    async def on_message(self, message):
-        if message.author == self.user:
-            return
+@bot.event 
+async def on_message(message):
+    await bot.process_commands(message)
 
-        if not isinstance(message.channel, discord.DMChannel) and message.channel.name not in config['discord']['chanells']:
-            return
+    if message.author == bot.user:
+        return
 
-        for match in re.finditer("(?<=https://www.pixiv.net/en/artworks/)\w+", message.content):
-            await handlePixivUrl(message, match.group(0))
+    if not isinstance(message.channel, discord.DMChannel) and message.channel.name not in config['discord']['art_channels']:
+        return
 
-        for match in re.finditer("(?<=https://inkbunny.net/s/)\w+", message.content):
-            await handleInkbunnyUrl(message, match.group(0))
+    for match in re.finditer("(?<=https://www.pixiv.net/en/artworks/)\w+", message.content):
+        await handlePixivUrl(message, match.group(0))
 
-        for match in re.finditer("(?<=https://www.furaffinity.net/view/)\w+", message.content):
-            await handleFuraffinityUrl(message, match.group(0))
+    for match in re.finditer("(?<=https://inkbunny.net/s/)\w+", message.content):
+        await handleInkbunnyUrl(message, match.group(0))
+
+    for match in re.finditer("(?<=https://www.furaffinity.net/view/)\w+", message.content):
+        await handleFuraffinityUrl(message, match.group(0))
+
+@bot.event
+async def on_raw_reaction_add(payload):
+    await handle_reaction(payload)
+
+@bot.event
+async def on_raw_reaction_remove(payload):
+    await handle_reaction(payload)
+
+# Commands
+@bot.command()
+async def list(ctx):
+    await ctx.send(f"TODO: make it pretty somehow. Current settigns: {roles_settings}")
+
+@bot.command()
+async def add(ctx, emoji: str, *, role: discord.Role):
+    print(f"{bot.user.name} added: {emoji} -> {role}")
+    roles_settings['roles'][emoji] = role.id
+    yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
+    await ctx.send(f"{bot.user.name} added: {emoji} -> {role}")
+
+@bot.command()
+async def remove(ctx, emoji: str):
+    del roles_settings['roles'][emoji]
+    yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
+    await ctx.send(f"{bot.user.name} deleted: {emoji}")
 
 # Main Loop
-client = DiscordClient()
-client.run(config['discord']['token'])
+bot.run(config['discord']['token'])
