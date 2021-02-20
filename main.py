@@ -208,10 +208,18 @@ async def on_raw_reaction_remove(payload):
 
 # Commands
 @bot.command()
+@commands.has_permissions(administrator=True)
 async def list(ctx):
-    await ctx.send(f"TODO: make it pretty somehow. Current settigns: {roles_settings}")
+    embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
+
+    for emoji in roles_settings['roles']:
+        role = ctx.guild.get_role(roles_settings['roles'][emoji])
+        embed.add_field(name=emoji, value=role)
+
+    await ctx.send(embed=embed)
 
 @bot.command()
+@commands.has_permissions(administrator=True)
 async def add(ctx, emoji: str, *, role: discord.Role):
     print(f"{bot.user.name} added: {emoji} -> {role}")
     roles_settings['roles'][emoji] = role.id
@@ -219,6 +227,7 @@ async def add(ctx, emoji: str, *, role: discord.Role):
     await ctx.send(f"{bot.user.name} added: {emoji} -> {role}")
 
 @bot.command()
+@commands.has_permissions(administrator=True)
 async def remove(ctx, emoji: str):
     del roles_settings['roles'][emoji]
     yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
