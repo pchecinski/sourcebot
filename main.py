@@ -213,8 +213,7 @@ async def list(ctx):
     embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
 
     for emoji in roles_settings['roles']:
-        role = ctx.guild.get_role(roles_settings['roles'][emoji])
-        embed.add_field(name=emoji, value=role)
+        embed.add_field(name=emoji, value=f"<@&{roles_settings['roles'][emoji]}>")
 
     await ctx.send(embed=embed)
 
