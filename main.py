@@ -89,18 +89,18 @@ async def handlePixivUrl(message, submission_id):
         pixiv.download(metadata['ugoira_metadata']['zip_urls']['medium'], Path(f"./media/{submission_id}.zip"))
 
         with ZipFile(f"./media/{submission_id}.zip", 'r') as zip_ref:
-          zip_ref.extractall(f"./media/{submission_id}/")
+            zip_ref.extractall(f"./media/{submission_id}/")
 
         os.remove(f"./media/{submission_id}.zip")
 
         # Prepare ffmpeg "concat demuxer" file
         with open(f"./media/{submission_id}/ffconcat.txt", 'w') as f:
-          for frame in metadata['ugoira_metadata']['frames']:
-            frame_file = frame['file']
-            frame_duration = round(frame['delay'] / 1000, 4)
+            for frame in metadata['ugoira_metadata']['frames']:
+                frame_file = frame['file']
+                frame_duration = round(frame['delay'] / 1000, 4)
 
-            f.write(f"file {frame_file}\nduration {frame_duration}\n")
-          f.write(f"file {metadata['ugoira_metadata']['frames'][-1]['file']}")
+                f.write(f"file {frame_file}\nduration {frame_duration}\n")
+            f.write(f"file {metadata['ugoira_metadata']['frames'][-1]['file']}")
 
         # Run ffmpeg for the given file/directory
         subprocess.call(
@@ -131,48 +131,44 @@ async def handlePixivUrl(message, submission_id):
     await message.channel.send(content=f'{illustration.title} by {illustration.user.name}', file=discord.File(path))
 
 async def handleInkbunnyUrl(message, submission_id):
-    await message.channel.trigger_typing()
+    async with message.channel.typing():
+        # Log in to API and get session ID
+        r = requests.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}")
+        data = r.json()
+        session = data['sid']
 
-    # Log in to API and get session ID
-    r = requests.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}")
-    data = r.json()
-    session = data['sid']
+        # Request information about the submission
+        r = requests.get(f'https://inkbunny.net/api_submissions.php?sid={session}&submission_ids={submission_id}')
+        data = r.json()
 
-    # Request information about the submission
-    r = requests.get(f'https://inkbunny.net/api_submissions.php?sid={session}&submission_ids={submission_id}')
-    data = r.json()
+        if len(data['submissions']) != 1:
+            return
 
-    if len(data['submissions']) != 1:
-        return
+        # Get image url and send it
+        submission = data['submissions'][0]
 
-    # Download and send file
-    submission = data['submissions'][0]
-    r = requests.get(submission['file_url_full'])
-    with open(f"./media/{submission['file_name']}", 'wb') as f:
-        f.write(r.content)
+        embed = discord.Embed(title=f"{submission['title']} by {submission['username']}")
+        embed.set_image(url=submission['file_url_full'])
 
-    await message.channel.send(content=f"{submission['title']} by {submission['username']}", file=discord.File(f"./media/{submission['file_name']}"))
+    await message.channel.send(embed=embed)
 
 async def handleFuraffinityUrl(message, submission_id):
-    cookies = [
-        {"name": "a", "value": config['furaffinity']['cookie']['a']},
-        {"name": "b", "value": config['furaffinity']['cookie']['b']},
-    ]
+    async with message.channel.typing():
+        cookies = [
+            {"name": "a", "value": config['furaffinity']['cookie']['a']},
+            {"name": "b", "value": config['furaffinity']['cookie']['b']},
+        ]
 
-    api = faapi.FAAPI(cookies)
-    submission, _ = api.get_submission(submission_id)
+        api = faapi.FAAPI(cookies)
+        submission, _ = api.get_submission(submission_id)
 
-    if submission.rating == 'General':
-       return
+        if submission.rating == 'General':
+            return
 
-    await message.channel.trigger_typing()
-    sub_file = api.get_submission_file(submission)
+        embed = discord.Embed(title=f"{submission.title} by {submission.author}")
+        embed.set_image(url=submission.file_url)
 
-    path = './media/' + submission.file_url.split('/')[-1]
-    with open(path, 'wb') as f:
-        f.write(sub_file)
-
-    await message.channel.send(content=f"{submission.title} by {submission.author}", file=discord.File(path))
+    await message.channel.send(embed=embed)
 
 # Events 
 @bot.event
