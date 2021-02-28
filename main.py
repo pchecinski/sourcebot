@@ -1,5 +1,4 @@
 #!/usr/bin/env python3.8
-
 import discord
 import faapi
 import glob
@@ -102,9 +101,14 @@ async def handlePixivUrl(message, submission_id):
                 f.write(f"file {frame_file}\nduration {frame_duration}\n")
             f.write(f"file {metadata['ugoira_metadata']['frames'][-1]['file']}")
 
+        if len(metadata['ugoira_metadata']['frames']) > 60:
+            ext, ext_params = 'webm', ""
+        else:
+            ext, ext_params = 'gif', "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
+
         # Run ffmpeg for the given file/directory
         subprocess.call(
-            shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i {submission_id}/ffconcat.txt {submission_id}.webm"),
+            shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i {submission_id}/ffconcat.txt {ext_params} {submission_id}.{ext}"),
             cwd=os.path.abspath(f"./media/")
         )
 
@@ -113,7 +117,7 @@ async def handlePixivUrl(message, submission_id):
             os.remove(f"./media/{submission_id}/{name}")
         os.rmdir(f"./media/{submission_id}/")
 
-        path = f"./media/{submission_id}.webm"
+        path = f"./media/{submission_id}.{ext}"
 
         # Delete information about dealing with longer upload
         await busy_message.delete()
