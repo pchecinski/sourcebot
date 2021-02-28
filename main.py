@@ -59,78 +59,77 @@ async def handle_reaction(payload):
 
 # Source fetching functions
 async def handlePixivUrl(message, submission_id):
-    await message.channel.trigger_typing()
+    async with message.channel.typing():
+        pixiv = pixivapi.Client()
+        pixiv.authenticate(config['pixiv']['token']) 
+        # pixiv.login(config['pixiv']['username'], config['pixiv']['password'])
 
-    pixiv = pixivapi.Client()
-    pixiv.authenticate(config['pixiv']['token']) 
-    # pixiv.login(config['pixiv']['username'], config['pixiv']['password'])
+        illustration = pixiv.fetch_illustration(submission_id)
 
-    illustration = pixiv.fetch_illustration(submission_id)
+        # Skip safe work
+        if illustration.x_restrict == 0:
+            return 
 
-    # Skip safe work
-    if illustration.x_restrict == 0:
-        return 
+        if illustration.x_restrict == 2:
+            await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
+            await message.delete()
+            return
 
-    if illustration.x_restrict == 2:
-        await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
-        await message.delete()
-        return
+        path = None
+        if illustration.type == pixivapi.enums.ContentType.UGOIRA:
+            busy_message = await message.channel.send("Oh hey, that's an animated one, it will take me a while!")
 
-    path = None
-    if illustration.type == pixivapi.enums.ContentType.UGOIRA:
-        busy_message = await message.channel.send("Oh hey, that's an animated one, it will take me a while!")
+            # Dealing with UGOIRA file
+            # Get file metadata (framges and zip_url)
+            metadata = pixiv._request_json(method = "get", url = "https://app-api.pixiv.net/v1/ugoira/metadata", params = {"illust_id": submission_id})
 
-        # Dealing with UGOIRA file
-        # Get file metadata (framges and zip_url)
-        metadata = pixiv._request_json(method = "get", url = "https://app-api.pixiv.net/v1/ugoira/metadata", params = {"illust_id": submission_id})
+            # Download and extract zip archive
+            pixiv.download(metadata['ugoira_metadata']['zip_urls']['medium'], Path(f"./media/{submission_id}.zip"))
 
-        # Download and extract zip archive
-        pixiv.download(metadata['ugoira_metadata']['zip_urls']['medium'], Path(f"./media/{submission_id}.zip"))
+            with ZipFile(f"./media/{submission_id}.zip", 'r') as zip_ref:
+                zip_ref.extractall(f"./media/{submission_id}/")
 
-        with ZipFile(f"./media/{submission_id}.zip", 'r') as zip_ref:
-            zip_ref.extractall(f"./media/{submission_id}/")
+            os.remove(f"./media/{submission_id}.zip")
 
-        os.remove(f"./media/{submission_id}.zip")
+            # Prepare ffmpeg "concat demuxer" file
+            with open(f"./media/{submission_id}/ffconcat.txt", 'w') as f:
+                for frame in metadata['ugoira_metadata']['frames']:
+                    frame_file = frame['file']
+                    frame_duration = round(frame['delay'] / 1000, 4)
 
-        # Prepare ffmpeg "concat demuxer" file
-        with open(f"./media/{submission_id}/ffconcat.txt", 'w') as f:
-            for frame in metadata['ugoira_metadata']['frames']:
-                frame_file = frame['file']
-                frame_duration = round(frame['delay'] / 1000, 4)
+                    f.write(f"file {frame_file}\nduration {frame_duration}\n")
+                f.write(f"file {metadata['ugoira_metadata']['frames'][-1]['file']}")
 
-                f.write(f"file {frame_file}\nduration {frame_duration}\n")
-            f.write(f"file {metadata['ugoira_metadata']['frames'][-1]['file']}")
+            if len(metadata['ugoira_metadata']['frames']) > 60:
+                ext, ext_params = 'webm', ""
+            else:
+                ext, ext_params = 'gif', "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
 
-        if len(metadata['ugoira_metadata']['frames']) > 60:
-            ext, ext_params = 'webm', ""
+            # Run ffmpeg for the given file/directory
+            subprocess.call(
+                shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i {submission_id}/ffconcat.txt {ext_params} {submission_id}.{ext}"),
+                cwd=os.path.abspath(f"./media/")
+            )
+
+            # Remove source files
+            for name in os.listdir(f"./media/{submission_id}/"):
+                os.remove(f"./media/{submission_id}/{name}")
+            os.rmdir(f"./media/{submission_id}/")
+
+            path = f"./media/{submission_id}.{ext}"
+
+            # Delete information about dealing with longer upload
+            await busy_message.delete()
+
         else:
-            ext, ext_params = 'gif', "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
+            # Normal download method
+            illustration.download(Path('./media/'))
 
-        # Run ffmpeg for the given file/directory
-        subprocess.call(
-            shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i {submission_id}/ffconcat.txt {ext_params} {submission_id}.{ext}"),
-            cwd=os.path.abspath(f"./media/")
-        )
-
-        # Remove source files
-        for name in os.listdir(f"./media/{submission_id}/"):
-            os.remove(f"./media/{submission_id}/{name}")
-        os.rmdir(f"./media/{submission_id}/")
-
-        path = f"./media/{submission_id}.{ext}"
-
-        # Delete information about dealing with longer upload
-        await busy_message.delete()
-
-    else:
-        # Normal download method
-        illustration.download(Path('./media/'))
-
-        # Deal with multiple page submissions
-        if illustration.page_count == 1:
-            path = glob.glob(f'./media/{submission_id}.*')[0]
-        else:
-            path = glob.glob(f'./media/{submission_id}/{submission_id}_p0.*')[0]
+            # Deal with multiple page submissions
+            if illustration.page_count == 1:
+                path = glob.glob(f'./media/{submission_id}.*')[0]
+            else:
+                path = glob.glob(f'./media/{submission_id}/{submission_id}_p0.*')[0]
 
     await message.channel.send(content=f'{illustration.title} by {illustration.user.name}', file=discord.File(path))
 
