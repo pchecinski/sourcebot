@@ -155,6 +155,26 @@ async def handleInkbunnyUrl(message, submission_id):
 
     await message.channel.send(embed=embed)
 
+async def handleE621Url(message, submission_id):
+    async with message.channel.typing():
+        headers = {
+            'User-Agent': f"{bot.user.name} by {config['e621']['username']}"
+        }
+
+        # Get image data using API Endpoint
+        r = requests.get(f"https://e621.net/posts/{submission_id}.json", headers=headers, auth=(config['e621']['username'], config['e621']['api_key']))
+        data = r.json()
+        post = data['post']
+
+        # Check for global blacklist (ignore other links as they already come with previews)
+        if 'young' not in post['tags']['general'] and post['tags']['rating'] != 'e':
+            return
+        
+        embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}")
+        embed.set_image(url=post['sample']['url'])
+
+    await message.channel.send(embed=embed)
+
 async def handleFuraffinityUrl(message, submission_id):
     async with message.channel.typing():
         cookies = [
@@ -196,6 +216,9 @@ async def on_message(message):
 
     for match in re.finditer("(?<=https://www.furaffinity.net/view/)\w+", message.content):
         await handleFuraffinityUrl(message, match.group(0))
+
+    for match in re.finditer("(?<=https://e621.net/posts/)\w+", message.content):
+        await handleE621Url(message, match.group(0))
 
 @bot.event
 async def on_raw_reaction_add(payload):
