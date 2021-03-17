@@ -150,7 +150,7 @@ async def handleInkbunnyUrl(message, submission_id):
         # Get image url and send it
         submission = data['submissions'][0]
 
-        embed = discord.Embed(title=f"{submission['title']} by {submission['username']}")
+        embed = discord.Embed(title=f"{submission['title']} by {submission['username']}", color=discord.Color(0xFCE4F1))
         embed.set_image(url=submission['file_url_full'])
 
     await message.channel.send(embed=embed)
@@ -170,7 +170,7 @@ async def handleE621Url(message, submission_id):
         if 'young' not in post['tags']['general'] and post['tags']['rating'] != 'e':
             return
         
-        embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}")
+        embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
         embed.set_image(url=post['sample']['url'])
 
     await message.channel.send(embed=embed)
@@ -188,7 +188,7 @@ async def handleFuraffinityUrl(message, submission_id):
         if submission.rating == 'General':
             return
 
-        embed = discord.Embed(title=f"{submission.title} by {submission.author}")
+        embed = discord.Embed(title=f"{submission.title} by {submission.author}", color=discord.Color(0xFAAF3A))
         embed.set_image(url=submission.file_url)
 
     await message.channel.send(embed=embed)
