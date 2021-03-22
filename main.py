@@ -219,19 +219,19 @@ async def on_message(message):
     if not isinstance(message.channel, discord.DMChannel) and message.channel.name not in config['discord']['art_channels']:
         return
 
-    for match in re.finditer("(?<=https://www.pixiv.net/en/artworks/)\w+", message.content):
+    for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)\w+", message.content):
         await handlePixivUrl(message, match.group(0))
 
-    for match in re.finditer("(?<=https://inkbunny.net/s/)\w+", message.content):
+    for match in re.finditer(r"(?<=https://inkbunny.net/s/)\w+", message.content):
         await handleInkbunnyUrl(message, match.group(0))
 
-    for match in re.finditer("(?<=https://www.furaffinity.net/view/)\w+", message.content):
+    for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)\w+", message.content):
         await handleFuraffinityUrl(message, match.group(0))
 
-    for match in re.finditer("(?<=https://e621.net/posts/)\w+", message.content):
+    for match in re.finditer(r"(?<=https://e621.net/posts/)\w+", message.content):
         await handleE621Url(message, match.group(0))
 
-    for match in re.finditer("(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)\w+", message.content): # TODO: better regex?
+    for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)\w+", message.content): # TODO: better regex?
         await handleRule34xxxUrl(message, match.group(0))
 
 @bot.event
