@@ -9,6 +9,7 @@ import requests
 import shlex
 import subprocess
 import yaml
+import xmltodict
 
 from discord.ext import commands
 from pprint import pprint
@@ -193,6 +194,16 @@ async def handleFuraffinityUrl(message, submission_id):
 
     await message.channel.send(embed=embed)
 
+async def handleRule34xxxUrl(message, submission_id):
+    async with message.channel.typing(): 
+        r = requests.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}")
+        data = xmltodict.parse(r.text)
+
+        embed = discord.Embed(color=discord.Color(0xABE5A4)) # TODO: Title? Maybe try to use source from the webiste if provided for other handers?
+        embed.set_image(url=data['posts']['post']['@file_url'])
+
+    await message.channel.send(embed=embed)
+
 # Events 
 @bot.event
 async def on_ready():
@@ -219,6 +230,9 @@ async def on_message(message):
 
     for match in re.finditer("(?<=https://e621.net/posts/)\w+", message.content):
         await handleE621Url(message, match.group(0))
+
+    for match in re.finditer("(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)\w+", message.content): # TODO: better regex?
+        await handleRule34xxxUrl(message, match.group(0))
 
 @bot.event
 async def on_raw_reaction_add(payload):
