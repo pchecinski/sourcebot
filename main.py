@@ -211,12 +211,10 @@ async def on_ready():
 
 @bot.event 
 async def on_message(message):
-    await bot.process_commands(message)
-
     if message.author == bot.user:
         return
 
-    if not isinstance(message.channel, discord.DMChannel) and message.channel.name not in config['discord']['art_channels']:
+    if not isinstance(message.channel, discord.DMChannel) and message.channel.id not in config['discord']['art_channels']:
         return
 
     for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)\w+", message.content):
@@ -233,6 +231,8 @@ async def on_message(message):
 
     for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)\w+", message.content): # TODO: better regex?
         await handleRule34xxxUrl(message, match.group(0))
+
+    await bot.process_commands(message)
 
 @bot.event
 async def on_raw_reaction_add(payload):
