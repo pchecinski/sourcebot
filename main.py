@@ -204,6 +204,20 @@ async def handleRule34xxxUrl(message, submission_id):
 
     await message.channel.send(embed=embed)
 
+async def handleBaraagContent(message, submission_id):
+    async with message.channel.typing():
+        r = requests.get(f"https://baraag.net/api/v1/statuses/{submission_id}")
+        data = r.json()
+
+        # Skip statuses without media attachments
+        if 'media_attachments' not in data:
+            return
+
+        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
+        embed.set_image(url=data['media_attachments'][0]['url'])
+
+    await message.channel.send(embed=embed)
+
 # Events 
 @bot.event
 async def on_ready():
@@ -217,20 +231,26 @@ async def on_message(message):
     if not isinstance(message.channel, discord.DMChannel) and message.channel.id not in config['discord']['art_channels']:
         return
 
-    for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)\w+", message.content):
-        await handlePixivUrl(message, match.group(0))
+    for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", message.content):
+        await handlePixivUrl(message, match.group(1))
 
-    for match in re.finditer(r"(?<=https://inkbunny.net/s/)\w+", message.content):
-        await handleInkbunnyUrl(message, match.group(0))
+    for match in re.finditer(r"(?<=https://inkbunny.net/s/)(\w+)", message.content):
+        await handleInkbunnyUrl(message, match.group(1))
 
-    for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)\w+", message.content):
-        await handleFuraffinityUrl(message, match.group(0))
+    for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)(\w+)", message.content):
+        await handleFuraffinityUrl(message, match.group(1))
 
-    for match in re.finditer(r"(?<=https://e621.net/posts/)\w+", message.content):
-        await handleE621Url(message, match.group(0))
+    for match in re.finditer(r"(?<=https://e621.net/posts/)(\w+)", message.content):
+        await handleE621Url(message, match.group(1))
 
-    for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)\w+", message.content): # TODO: better regex?
-        await handleRule34xxxUrl(message, match.group(0))
+    for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)", message.content): # TODO: better regex?
+        await handleRule34xxxUrl(message, match.group(1))
+
+    for match in re.finditer(r"(?<=https://baraag.net/web/statuses/)(\w+)", message.content):
+        await handleBaraagContent(message, match.group(1))
+
+    for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", message.content):
+        await handleBaraagContent(message, match.group(1))
 
     await bot.process_commands(message)
 
