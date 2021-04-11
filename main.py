@@ -1,7 +1,10 @@
 #!/usr/bin/env python3.8
+import datetime
 import discord
 import faapi
 import glob
+import json
+import logging
 import os
 import pixivapi
 import re
@@ -11,9 +14,11 @@ import subprocess
 import yaml
 import xmltodict
 
+from dateutil import tz
 from discord.ext import commands
 from pprint import pprint
 from pathlib import Path
+from saucenao_api import SauceNao
 from zipfile import ZipFile
 
 MAIN_CONFIG = "config/main.yml"
@@ -204,10 +209,13 @@ async def handleRule34xxxUrl(message, submission_id):
 
     await message.channel.send(embed=embed)
 
-async def handleBaraagContent(message, submission_id):
-    async with message.channel.typing():
-        r = requests.get(f"https://baraag.net/api/v1/statuses/{submission_id}")
+async def handlePawooContent(message, submission_id):
+    #async with message.channel.typing():
+        r = requests.get(f"https://pawoo.net/api/v1/statuses/{submission_id}")
         data = r.json()
+
+        with open(f"media/data/pawoo_{submission_id}.json", 'w') as outfile:
+            json.dump(data, outfile)
 
         # Skip statuses without media attachments
         if 'media_attachments' not in data:
@@ -216,43 +224,85 @@ async def handleBaraagContent(message, submission_id):
         embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
         embed.set_image(url=data['media_attachments'][0]['url'])
 
-    await message.channel.send(embed=embed)
+    #await message.channel.send(embed=embed)
+
+async def handleBaraagContent(message, submission_id):
+    #async with message.channel.typing():
+        r = requests.get(f"https://baraag.net/api/v1/statuses/{submission_id}")
+        data = r.json()
+
+        with open(f"media/data/baraag_{submission_id}.json", 'w') as outfile:
+            json.dump(data, outfile)
+
+        # Skip statuses without media attachments
+        if 'media_attachments' not in data:
+            return
+
+        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
+        embed.set_image(url=data['media_attachments'][0]['url'])
+
+    #await message.channel.send(embed=embed)
 
 # Events 
 @bot.event
 async def on_ready():
-    print(f"The great and only {bot.user.name} has connected to Discord!")
+    print(f"The great and only {bot.user.name} has connected to Discord API!")
 
 @bot.event 
 async def on_message(message):
-    if message.author == bot.user:
-        return
+    try:
+        if message.author == bot.user:
+            return
 
-    if not isinstance(message.channel, discord.DMChannel) and message.channel.id not in config['discord']['art_channels']:
-        return
+        await bot.process_commands(message)
 
-    for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", message.content):
-        await handlePixivUrl(message, match.group(1))
+        if not isinstance(message.channel, discord.DMChannel) and message.channel.id not in config['discord']['art_channels']:
+            return
 
-    for match in re.finditer(r"(?<=https://inkbunny.net/s/)(\w+)", message.content):
-        await handleInkbunnyUrl(message, match.group(1))
+        if len(message.attachments) > 0:
+            url = message.attachments[0].url
 
-    for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)(\w+)", message.content):
-        await handleFuraffinityUrl(message, match.group(1))
+            sauce = SauceNao(config['saucenao']['token'])
+            results = sauce.from_url(url)
 
-    for match in re.finditer(r"(?<=https://e621.net/posts/)(\w+)", message.content):
-        await handleE621Url(message, match.group(1))
+            if len(results) == 0:
+                return
 
-    for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)", message.content): # TODO: better regex?
-        await handleRule34xxxUrl(message, match.group(1))
+            if results[0].similarity < 90:
+                return
 
-    for match in re.finditer(r"(?<=https://baraag.net/web/statuses/)(\w+)", message.content):
-        await handleBaraagContent(message, match.group(1))
+            await message.reply(f"Source: <{results[0].urls[0]}>")
 
-    for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", message.content):
-        await handleBaraagContent(message, match.group(1))
+        for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", message.content):
+            await handlePixivUrl(message, match.group(1))
 
-    await bot.process_commands(message)
+        for match in re.finditer(r"(?<=https://inkbunny.net/s/)(\w+)", message.content):
+            await handleInkbunnyUrl(message, match.group(1))
+
+        for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)(\w+)", message.content):
+            await handleFuraffinityUrl(message, match.group(1))
+
+        for match in re.finditer(r"(?<=https://e621.net/posts/)(\w+)", message.content):
+            await handleE621Url(message, match.group(1))
+
+        for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)", message.content): # TODO: better regex?
+            await handleRule34xxxUrl(message, match.group(1))
+
+        for match in re.finditer(r"(?<=https://pawoo.net/web/statuses/)(\w+)", message.content):
+            await handlePawooContent(message, match.group(1))
+
+        for match in re.finditer(r"(?<=https://pawoo.net/)@\w+/(\w+)", message.content):
+            await handlePawooContent(message, match.group(1))
+
+        for match in re.finditer(r"(?<=https://baraag.net/web/statuses/)(\w+)", message.content):
+            await handleBaraagContent(message, match.group(1))
+
+        for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", message.content):
+            await handleBaraagContent(message, match.group(1))
+
+    except Exception as e:
+        logging.exception("Exception occurred", exc_info=True)
+
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -288,5 +338,18 @@ async def remove(ctx, emoji: str):
     yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
     await ctx.send(f"{bot.user.name} deleted: {emoji}")
 
-# Main Loop
-bot.run(config['discord']['token'])
+@bot.command()
+async def now(ctx):
+    embed = discord.Embed(title="Current time", colour=discord.Colour(0x8ba089))
+    now = datetime.datetime.now()
+
+    for zone in ['US/Pacific', 'US/Central', 'US/Eastern', 'Europe/London', 'Europe/Warsaw', 'Asia/Singapore']:
+        embed.add_field(name=zone, value=now.astimezone(tz.gettz(zone)).strftime('%A, %B %-d, %Y, %-I:%M %p'), inline=False)
+
+    await ctx.send(embed=embed)
+
+if __name__ == '__main__':
+    logging.basicConfig(filename='error.log', format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+
+    # Main Loop
+    bot.run(config['discord']['token'])
