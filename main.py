@@ -63,6 +63,29 @@ async def handle_reaction(payload):
     if payload.event_type == 'REACTION_REMOVE':
         await member.remove_roles(role, reason='emoji_role_remove')
 
+async def provideSources(message): 
+    sauce = SauceNao(config['saucenao']['token'])
+    sources = []
+
+    for attachment in message.attachments:
+        results = sauce.from_url(attachment.url)
+
+        if len(results) == 0:
+            continue
+
+        if results[0].similarity < 80:
+            continue
+
+        sources.append(f"<{results[0].urls[0]}>")
+        logging.info(f"{message.guild.name}: {attachment.url} {results[0].similarity} {results[0].urls[0]}")
+    
+    if len(sources) == 0:
+        return
+    
+    source_urls = '\n'.join(sources)
+    await message.reply(f"Source(s):\n{source_urls}")
+
+
 # Source fetching functions
 async def handlePixivUrl(message, submission_id):
     async with message.channel.typing():
@@ -260,18 +283,7 @@ async def on_message(message):
             return
 
         if len(message.attachments) > 0:
-            url = message.attachments[0].url
-
-            sauce = SauceNao(config['saucenao']['token'])
-            results = sauce.from_url(url)
-
-            if len(results) == 0:
-                return
-
-            if results[0].similarity < 90:
-                return
-
-            await message.reply(f"Source: <{results[0].urls[0]}>")
+            await provideSources(message)
 
         for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", message.content):
             await handlePixivUrl(message, match.group(1))
@@ -349,7 +361,7 @@ async def now(ctx):
     await ctx.send(embed=embed)
 
 if __name__ == '__main__':
-    logging.basicConfig(filename='error.log', format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+    logging.basicConfig(filename='error.log', level=logging.INFO, format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
 
     # Main Loop
     bot.run(config['discord']['token'])
