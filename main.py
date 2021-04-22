@@ -70,6 +70,10 @@ async def provideSources(message):
     for attachment in message.attachments:
         results = sauce.from_url(attachment.url)
 
+        # for result in results:
+        #     pprint(result)
+        #     pprint(result.urls)
+
         if len(results) == 0:
             continue
 
@@ -77,7 +81,11 @@ async def provideSources(message):
             continue
 
         sources.append(f"<{results[0].urls[0]}>")
-        logging.info(f"{message.guild.name}: {attachment.url} {results[0].similarity} {results[0].urls[0]}")
+
+        # Log source to sources.log
+        asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open('logs/sources.log', 'a') as f:
+            f.write(f"[{asctime}] [{message.guild.name}/{message.channel.name}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
     
     if len(sources) == 0:
         return
@@ -285,31 +293,34 @@ async def on_message(message):
         if len(message.attachments) > 0:
             await provideSources(message)
 
-        for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", message.content):
+        spoiler_regeq = re.compile('\|\|(.*?)\|\|', re.DOTALL)
+        content = re.sub(spoiler_regeq, '', message.content)
+
+        for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", content):
             await handlePixivUrl(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://inkbunny.net/s/)(\w+)", message.content):
+        for match in re.finditer(r"(?<=https://inkbunny.net/s/)(\w+)", content):
             await handleInkbunnyUrl(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)(\w+)", message.content):
+        for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)(\w+)", content):
             await handleFuraffinityUrl(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://e621.net/posts/)(\w+)", message.content):
+        for match in re.finditer(r"(?<=https://e621.net/posts/)(\w+)", content):
             await handleE621Url(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)", message.content): # TODO: better regex?
+        for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)", content): # TODO: better regex?
             await handleRule34xxxUrl(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://pawoo.net/web/statuses/)(\w+)", message.content):
+        for match in re.finditer(r"(?<=https://pawoo.net/web/statuses/)(\w+)", content):
             await handlePawooContent(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://pawoo.net/)@\w+/(\w+)", message.content):
+        for match in re.finditer(r"(?<=https://pawoo.net/)@\w+/(\w+)", content):
             await handlePawooContent(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://baraag.net/web/statuses/)(\w+)", message.content):
+        for match in re.finditer(r"(?<=https://baraag.net/web/statuses/)(\w+)", content):
             await handleBaraagContent(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", message.content):
+        for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", content):
             await handleBaraagContent(message, match.group(1))
 
     except Exception as e:
@@ -361,7 +372,7 @@ async def now(ctx):
     await ctx.send(embed=embed)
 
 if __name__ == '__main__':
-    logging.basicConfig(filename='error.log', level=logging.INFO, format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+    logging.basicConfig(filename='logs/error.log', format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
 
     # Main Loop
     bot.run(config['discord']['token'])
