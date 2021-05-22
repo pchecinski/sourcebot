@@ -294,7 +294,7 @@ async def on_message(message):
         # Process commands (emojis)
         await bot.process_commands(message)
 
-        # Ignore text in vaild spoiler tag
+        # Ignore text in valid spoiler tag
         spoiler_regeq = re.compile('\|\|(.*?)\|\|', re.DOTALL)
         content = re.sub(spoiler_regeq, '', message.content)
 
@@ -308,12 +308,14 @@ async def on_message(message):
 
                 r = s.head(short_url, headers=headers)
                 r = s.head(r.headers['Location'], headers=headers)
-                url = r.headers['Location']
+                url = r.headers['Location'].split('?')[0] # remove all the junk in query data
 
                 data = await bot.loop.run_in_executor(None, tiktokHandler, url)
 
+                # Log tiktok urls to tiktok.log
+                asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 with open('logs/tiktok.log', 'a') as f:
-                    f.write(f"[{asctime}] [{message.guild.name}/{message.channel.name}]\n{short_url}, {url}, size: {len(data)}\n")
+                    f.write(f"[{asctime}] [{message.guild.name}/{message.channel.name}]\n{short_url}, {url}, size: {len(data) / 1048576} MB\n")
 
                 await message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4'))
 
