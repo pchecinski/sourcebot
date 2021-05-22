@@ -3,6 +3,7 @@ import datetime
 import discord
 import faapi
 import glob
+import io
 import json
 import logging
 import os
@@ -20,6 +21,7 @@ from pprint import pprint
 from pathlib import Path
 from saucenao_api import SauceNao
 from zipfile import ZipFile
+from TikTokApi import TikTokApi
 
 MAIN_CONFIG = "config/main.yml"
 ROLES_SETTINGS = "config/roles.yml"
@@ -279,49 +281,74 @@ async def handleBaraagContent(message, submission_id):
 async def on_ready():
     print(f"The great and only {bot.user.name} has connected to Discord API!")
 
+def tiktokHandler(url):
+    api = TikTokApi.get_instance()
+    return api.get_video_by_url(url)
+
 @bot.event 
 async def on_message(message):
     try:
         if message.author == bot.user:
             return
 
+        # Process commands (emojis)
         await bot.process_commands(message)
 
-        if not isinstance(message.channel, discord.DMChannel) and message.channel.id not in config['discord']['art_channels']:
-            return
-
-        if len(message.attachments) > 0:
-            await provideSources(message)
-
+        # Ignore text in vaild spoiler tag
         spoiler_regeq = re.compile('\|\|(.*?)\|\|', re.DOTALL)
         content = re.sub(spoiler_regeq, '', message.content)
 
-        for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", content):
-            await handlePixivUrl(message, match.group(1))
+        # Post tiktok videos
+        if message.channel.id in config['discord']['tiktok_channels'] or isinstance(message.channel, discord.DMChannel):
+            for match in re.finditer(r"(?<=https://vm.tiktok.com/)(\w+)", content):
+                short_url = 'https://vm.tiktok.com/' + match.group(1)
 
-        for match in re.finditer(r"(?<=https://inkbunny.net/s/)(\w+)", content):
-            await handleInkbunnyUrl(message, match.group(1))
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36'}
+                s = requests.Session()
 
-        for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)(\w+)", content):
-            await handleFuraffinityUrl(message, match.group(1))
+                r = s.head(short_url, headers=headers)
+                r = s.head(r.headers['Location'], headers=headers)
+                url = r.headers['Location']
 
-        for match in re.finditer(r"(?<=https://e621.net/posts/)(\w+)", content):
-            await handleE621Url(message, match.group(1))
+                data = await bot.loop.run_in_executor(None, tiktokHandler, url)
 
-        for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)", content): # TODO: better regex?
-            await handleRule34xxxUrl(message, match.group(1))
+                with open('logs/tiktok.log', 'a') as f:
+                    f.write(f"[{asctime}] [{message.guild.name}/{message.channel.name}]\n{short_url}, {url}, size: {len(data)}\n")
 
-        for match in re.finditer(r"(?<=https://pawoo.net/web/statuses/)(\w+)", content):
-            await handlePawooContent(message, match.group(1))
+                await message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4'))
 
-        for match in re.finditer(r"(?<=https://pawoo.net/)@\w+/(\w+)", content):
-            await handlePawooContent(message, match.group(1))
+        # Source providing service handlers
+        if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
+            if len(message.attachments) > 0:
+                await provideSources(message)
+                return 
 
-        for match in re.finditer(r"(?<=https://baraag.net/web/statuses/)(\w+)", content):
-            await handleBaraagContent(message, match.group(1))
+            for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", content):
+                await handlePixivUrl(message, match.group(1))
 
-        for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", content):
-            await handleBaraagContent(message, match.group(1))
+            for match in re.finditer(r"(?<=https://inkbunny.net/s/)(\w+)", content):
+                await handleInkbunnyUrl(message, match.group(1))
+
+            for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)(\w+)", content):
+                await handleFuraffinityUrl(message, match.group(1))
+
+            for match in re.finditer(r"(?<=https://e621.net/posts/)(\w+)", content):
+                await handleE621Url(message, match.group(1))
+
+            for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)", content): # TODO: better regex?
+                await handleRule34xxxUrl(message, match.group(1))
+
+            for match in re.finditer(r"(?<=https://pawoo.net/web/statuses/)(\w+)", content):
+                await handlePawooContent(message, match.group(1))
+
+            for match in re.finditer(r"(?<=https://pawoo.net/)@\w+/(\w+)", content):
+                await handlePawooContent(message, match.group(1))
+
+            for match in re.finditer(r"(?<=https://baraag.net/web/statuses/)(\w+)", content):
+                await handleBaraagContent(message, match.group(1))
+
+            for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", content):
+                await handleBaraagContent(message, match.group(1))    
 
     except Exception as e:
         logging.exception("Exception occurred", exc_info=True)
