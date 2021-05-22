@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.8
+#!/home/discordbot/sourcebot-env/bin/python3.8
 import datetime
 import discord
 import faapi
