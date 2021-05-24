@@ -311,11 +311,17 @@ async def on_message(message):
                 url = r.headers['Location'].split('?')[0] # remove all the junk in query data
 
                 data = await bot.loop.run_in_executor(None, tiktokHandler, url)
+                size = len(data) / 1048576
 
                 # Log tiktok urls to tiktok.log
                 asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 with open('logs/tiktok.log', 'a') as f:
-                    f.write(f"[{asctime}] [{message.guild.name}/{message.channel.name}]\n{short_url}, {url}, size: {len(data) / 1048576} MB\n")
+                    f.write(f"[{asctime}] [{message.guild.name}/{message.channel.name}]\n{short_url}, {url}, size: {size:.2f} MB\n")
+
+                # Check for Discord filesize limit
+                if size > 8.0:
+                    await message.reply('I\'m sorry but this video is too large for Discord to handle :sob:')
+                    continue
 
                 await message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4'))
 
@@ -354,7 +360,6 @@ async def on_message(message):
 
     except Exception as e:
         logging.exception("Exception occurred", exc_info=True)
-
 
 @bot.event
 async def on_raw_reaction_add(payload):

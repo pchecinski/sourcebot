@@ -1,0 +1,31 @@
+discord:
+  token: "discord-bot-token"
+  role_channel: 'role-channel'
+  art_channels: # Channels ids where source providing should work
+    - 123456789012345678
+    - 234567890123456789 
+  tiktok_channels: # Channels ids where tiktok videos should be downloaded and posted
+    - 123456789012345678
+    - 234567890123456789 
+
+# Credentials to websites/api tokens   
+e621:
+  username: "-"
+  api_key: "-"  
+  
+furaffinity:
+  cookie:
+    a: "-"
+    b: "-"
+
+inkbunny:
+  username: "-"
+  password: "-"
+
+pixiv:
+  username: "-"
+  password: "-"
+  token: "-"
+
+saucenao:
+  token: "-"
