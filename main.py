@@ -432,16 +432,6 @@ async def remove(ctx, emoji: str):
     yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
     await ctx.send(f"{bot.user.name} deleted: {emoji}")
 
-@bot.command()
-async def now(ctx):
-    embed = discord.Embed(title="Current time", colour=discord.Colour(0x8ba089))
-    now = datetime.datetime.now()
-
-    for zone in ['US/Pacific', 'US/Central', 'US/Eastern', 'Europe/London', 'Europe/Warsaw', 'Asia/Singapore']:
-        embed.add_field(name=zone, value=now.astimezone(tz.gettz(zone)).strftime('%A, %B %-d, %Y, %-I:%M %p'), inline=False)
-
-    await ctx.send(embed=embed)
-
 if __name__ == '__main__':
     logging.basicConfig(filename='logs/error.log', format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
 
