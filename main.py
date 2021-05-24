@@ -2,7 +2,6 @@
 import datetime
 import discord
 import faapi
-import glob
 import hashlib
 import io
 import json
@@ -18,8 +17,8 @@ import yaml
 from dateutil import tz
 from discord.ext import commands
 from saucenao_api import SauceNao
-from zipfile import ZipFile
 from TikTokApi import TikTokApi
+from zipfile import ZipFile
 
 MAIN_CONFIG = "config/main.yml"
 ROLES_SETTINGS = "config/roles.yml"
