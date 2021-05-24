@@ -17,6 +17,7 @@ import yaml
 from dateutil import tz
 from discord.ext import commands
 from saucenao_api import SauceNao
+from tempfile import TemporaryDirectory
 from TikTokApi import TikTokApi
 from zipfile import ZipFile
 
@@ -164,38 +165,34 @@ async def handlePixivUrl(message, submission_id):
             )
             data = response.json()
 
-            # Download and extract zip archive
-            with session.get(data['ugoira_metadata']['zip_urls']['medium'], stream=True) as r:
-                with ZipFile(io.BytesIO(r.content), 'r') as zip_ref: 
-                    zip_ref.extractall(f"./media/{submission_id}/")
+            # Download and extract zip archive to temporary directory
+            with TemporaryDirectory() as tmpdir:
+                with session.get(data['ugoira_metadata']['zip_urls']['medium'], stream=True) as r:
+                    with ZipFile(io.BytesIO(r.content), 'r') as zip_ref: 
+                        zip_ref.extractall(tmpdir)
 
-            # Prepare ffmpeg "concat demuxer" file
-            with open(f"./media/{submission_id}/ffconcat.txt", 'w') as f:
-                for frame in data['ugoira_metadata']['frames']:
-                    frame_file = frame['file']
-                    frame_duration = round(frame['delay'] / 1000, 4)
+                # Prepare ffmpeg "concat demuxer" file
+                with open(f"{tmpdir}/ffconcat.txt", 'w') as f:
+                    for frame in data['ugoira_metadata']['frames']:
+                        frame_file = frame['file']
+                        frame_duration = round(frame['delay'] / 1000, 4)
 
-                    f.write(f"file {frame_file}\nduration {frame_duration}\n")
-                f.write(f"file {data['ugoira_metadata']['frames'][-1]['file']}")
+                        f.write(f"file {frame_file}\nduration {frame_duration}\n")
+                    f.write(f"file {data['ugoira_metadata']['frames'][-1]['file']}")
 
-            if len(data['ugoira_metadata']['frames']) > 60:
-                ext, ext_params = 'webm', ""
-            else:
-                ext, ext_params = 'gif', "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
+                if len(data['ugoira_metadata']['frames']) > 60:
+                    ext, ext_params = 'webm', ""
+                else:
+                    ext, ext_params = 'gif', "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
 
-            # Run ffmpeg for the given file/directory
-            subprocess.call(
-                shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i {submission_id}/ffconcat.txt {ext_params} {submission_id}.{ext}"),
-                cwd=os.path.abspath(f"./media/")
-            )
+                # Run ffmpeg for the given file/directory
+                subprocess.call(
+                    shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt {ext_params} {submission_id}.{ext}"),
+                    cwd=os.path.abspath(tmpdir)
+                )
 
-            # Remove source files
-            for name in os.listdir(f"./media/{submission_id}/"):
-                os.remove(f"./media/{submission_id}/{name}")
-            os.rmdir(f"./media/{submission_id}/")
-
-            file = discord.File(f"./media/{submission_id}.{ext}", filename=f"{submission_id}.{ext}")
-            embed.set_image(url=f"attachment://{submission_id}.{ext}")
+                file = discord.File(f"{tmpdir}/{submission_id}.{ext}", filename=f"{submission_id}.{ext}")
+                embed.set_image(url=f"attachment://{submission_id}.{ext}")
 
             # Delete information about dealing with longer upload
             await busy_message.delete()
