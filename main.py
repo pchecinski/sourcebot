@@ -284,7 +284,7 @@ async def handlePawooContent(message, submission_id):
         r = requests.get(f"https://pawoo.net/api/v1/statuses/{submission_id}")
         data = r.json()
 
-        with open(f"media/data/pawoo_{submission_id}.json", 'w') as outfile:
+        with open(f"logs/pawoo_{submission_id}.json", 'w') as outfile:
             json.dump(data, outfile)
 
         # Skip statuses without media attachments
@@ -301,7 +301,7 @@ async def handleBaraagContent(message, submission_id):
         r = requests.get(f"https://baraag.net/api/v1/statuses/{submission_id}")
         data = r.json()
 
-        with open(f"media/data/baraag_{submission_id}.json", 'w') as outfile:
+        with open(f"logs/baraag_{submission_id}.json", 'w') as outfile:
             json.dump(data, outfile)
 
         # Skip statuses without media attachments
