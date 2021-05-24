@@ -3,22 +3,20 @@ import datetime
 import discord
 import faapi
 import glob
+import hashlib
 import io
 import json
 import logging
 import os
-import pixivapi
 import re
 import requests
 import shlex
 import subprocess
-import yaml
 import xmltodict
+import yaml
 
 from dateutil import tz
 from discord.ext import commands
-from pprint import pprint
-from pathlib import Path
 from saucenao_api import SauceNao
 from zipfile import ZipFile
 from TikTokApi import TikTokApi
@@ -96,50 +94,92 @@ async def provideSources(message):
     await message.reply(f"Source(s):\n{source_urls}")
 
 
+# Static data for pixiv
+AUTH_URL = "https://oauth.secure.pixiv.net/auth/token"
+BASE_URL = "https://app-api.pixiv.net"
+
+CLIENT_ID = "KzEZED7aC0vird8jWyHM38mXjNTY"
+CLIENT_SECRET = "W9JZoJe00qPvJsiyCGT3CCtC6ZUtdpKpzMbNlUGP"
+LOGIN_SECRET = "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c"
+
+HEADERS = {
+    "User-Agent": "PixivAndroidApp/5.0.115 (Android 6.0; PixivBot)",
+    "Accept-Language": "English"
+}
+
 # Source fetching functions
 async def handlePixivUrl(message, submission_id):
     async with message.channel.typing():
-        pixiv = pixivapi.Client()
-        pixiv.authenticate(config['pixiv']['token']) 
-        # pixiv.login(config['pixiv']['username'], config['pixiv']['password'])
+        # Prepare Access Token
+        session = requests.session()
+        session.headers.update(HEADERS)
+        client_time = datetime.datetime.utcnow().replace(microsecond=0).replace(tzinfo=datetime.timezone.utc).isoformat()
 
-        illustration = pixiv.fetch_illustration(submission_id)
+        # Authenticate using Refresh token
+        response = session.post(
+            url = AUTH_URL,
+            data = {
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "get_secure_url": 1,
+                "grant_type": "refresh_token",
+                "refresh_token": config['pixiv']['token']
+            },
+            headers = {
+                "X-Client-Time": client_time,
+                "X-Client-Hash": hashlib.md5(
+                    (client_time + LOGIN_SECRET).encode("utf-8")
+                ).hexdigest()
+            },
+        )
+        data = response.json()
+        session.headers.update({"Authorization": f"Bearer {data['access_token']}"})
+
+        # Get Illustration details
+        response = session.get(
+            url = f"{BASE_URL}/v1/illust/detail",
+            params = { "illust_id": submission_id },
+        )
+        data = response.json()
+        session.headers.update({"Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"})
 
         # Skip safe work
-        if illustration.x_restrict == 0:
+        if data['illust']['x_restrict'] == 0:
             return 
 
-        if illustration.x_restrict == 2:
+        if data['illust']['x_restrict'] == 2:
             await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
             await message.delete()
             return
 
-        path = None
-        if illustration.type == pixivapi.enums.ContentType.UGOIRA:
+        # Prepare the embed object
+        embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
+
+        if data['illust']['type'] == 'ugoira':
             busy_message = await message.channel.send("Oh hey, that's an animated one, it will take me a while!")
 
-            # Dealing with UGOIRA file
             # Get file metadata (framges and zip_url)
-            metadata = pixiv._request_json(method = "get", url = "https://app-api.pixiv.net/v1/ugoira/metadata", params = {"illust_id": submission_id})
+            response = session.get(
+                url = f"{BASE_URL}/v1/ugoira/metadata",
+                params = { "illust_id": submission_id },
+            )
+            data = response.json()
 
             # Download and extract zip archive
-            pixiv.download(metadata['ugoira_metadata']['zip_urls']['medium'], Path(f"./media/{submission_id}.zip"))
-
-            with ZipFile(f"./media/{submission_id}.zip", 'r') as zip_ref:
-                zip_ref.extractall(f"./media/{submission_id}/")
-
-            os.remove(f"./media/{submission_id}.zip")
+            with session.get(data['ugoira_metadata']['zip_urls']['medium'], stream=True) as r:
+                with ZipFile(io.BytesIO(r.content), 'r') as zip_ref: 
+                    zip_ref.extractall(f"./media/{submission_id}/")
 
             # Prepare ffmpeg "concat demuxer" file
             with open(f"./media/{submission_id}/ffconcat.txt", 'w') as f:
-                for frame in metadata['ugoira_metadata']['frames']:
+                for frame in data['ugoira_metadata']['frames']:
                     frame_file = frame['file']
                     frame_duration = round(frame['delay'] / 1000, 4)
 
                     f.write(f"file {frame_file}\nduration {frame_duration}\n")
-                f.write(f"file {metadata['ugoira_metadata']['frames'][-1]['file']}")
+                f.write(f"file {data['ugoira_metadata']['frames'][-1]['file']}")
 
-            if len(metadata['ugoira_metadata']['frames']) > 60:
+            if len(data['ugoira_metadata']['frames']) > 60:
                 ext, ext_params = 'webm', ""
             else:
                 ext, ext_params = 'gif', "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
@@ -155,22 +195,23 @@ async def handlePixivUrl(message, submission_id):
                 os.remove(f"./media/{submission_id}/{name}")
             os.rmdir(f"./media/{submission_id}/")
 
-            path = f"./media/{submission_id}.{ext}"
+            file = discord.File(f"./media/{submission_id}.{ext}", filename=f"{submission_id}.{ext}")
+            embed.set_image(url=f"attachment://{submission_id}.{ext}")
 
             # Delete information about dealing with longer upload
             await busy_message.delete()
 
         else:
-            # Normal download method
-            illustration.download(Path('./media/'))
-
-            # Deal with multiple page submissions
-            if illustration.page_count == 1:
-                path = glob.glob(f'./media/{submission_id}.*')[0]
+            if data['illust']['meta_single_page']:
+                url = data['illust']['meta_single_page']['original_image_url']
             else:
-                path = glob.glob(f'./media/{submission_id}/{submission_id}_p0.*')[0]
+                url = data['illust']['meta_pages'][0]['image_urls']['original']
+            ext = os.path.splitext(url)[1]
+            with session.get(url, stream=True) as r:
+                file = discord.File(io.BytesIO(r.content), filename=f"{submission_id}.{ext}")
+                embed.set_image(url=f"attachment://{submission_id}.{ext}")
 
-    await message.channel.send(content=f'{illustration.title} by {illustration.user.name}', file=discord.File(path))
+    await message.channel.send(embed=embed, file=file)
 
 async def handleInkbunnyUrl(message, submission_id):
     async with message.channel.typing():
