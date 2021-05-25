@@ -246,7 +246,7 @@ async def handleE621Url(message, submission_id):
         post = data['post']
 
         # Check for global blacklist (ignore other links as they already come with previews)
-        if 'young' not in post['tags']['general'] and post['rating'] != 'e':
+        if 'young' not in post['tags']['general'] or post['rating'] != 'e':
             return
         
         embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
