@@ -1,4 +1,6 @@
 #!/home/discordbot/sourcebot-env/bin/python3.8
+# -*- coding: utf-8 -*-
+
 import datetime
 import discord
 import faapi
@@ -85,7 +87,8 @@ async def provideSources(message):
         # Log source to sources.log
         asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with open('logs/sources.log', 'a') as f:
-            f.write(f"[{asctime}] [{message.guild.name}/{message.channel.name}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
+            location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
+            f.write(f"[{asctime}] [{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
     
     if len(sources) == 0:
         return
@@ -181,9 +184,9 @@ async def handlePixivUrl(message, submission_id):
                     f.write(f"file {data['ugoira_metadata']['frames'][-1]['file']}")
 
                 if len(data['ugoira_metadata']['frames']) > 60:
-                    ext, ext_params = 'webm', ""
+                    ext, ext_params = "webm", ""
                 else:
-                    ext, ext_params = 'gif', "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
+                    ext, ext_params = "gif", "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
 
                 # Run ffmpeg for the given file/directory
                 subprocess.call(
@@ -217,7 +220,7 @@ async def handleInkbunnyUrl(message, submission_id):
         session = data['sid']
 
         # Request information about the submission
-        r = requests.get(f'https://inkbunny.net/api_submissions.php?sid={session}&submission_ids={submission_id}')
+        r = requests.get(f"https://inkbunny.net/api_submissions.php?sid={session}&submission_ids={submission_id}")
         data = r.json()
 
         if len(data['submissions']) != 1:
@@ -243,7 +246,7 @@ async def handleE621Url(message, submission_id):
         post = data['post']
 
         # Check for global blacklist (ignore other links as they already come with previews)
-        if 'young' not in post['tags']['general'] and post['tags']['rating'] != 'e':
+        if 'young' not in post['tags']['general'] and post['rating'] != 'e':
             return
         
         embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
@@ -353,7 +356,8 @@ async def on_message(message):
                 # Log tiktok urls to tiktok.log
                 asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 with open('logs/tiktok.log', 'a') as f:
-                    f.write(f"[{asctime}] [{message.guild.name}/{message.channel.name}]\n{short_url}, {url}, size: {size:.2f} MB\n")
+                    location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
+                    f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB\n")
 
                 # Check for Discord filesize limit
                 if size > 8.0:
