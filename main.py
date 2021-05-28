@@ -18,6 +18,7 @@ import yaml
 
 from dateutil import tz
 from discord.ext import commands
+from html.parser import HTMLParser
 from saucenao_api import SauceNao
 from tempfile import TemporaryDirectory
 from TikTokApi import TikTokApi
@@ -234,20 +235,48 @@ async def handleInkbunnyUrl(message, submission_id):
 
     await message.channel.send(embed=embed)
 
+# Helper class for E621 (solves 503 /challenge)
+class formParser(HTMLParser):
+    # Output value from parser
+    value = None
+    
+    # HTML Parser Methods
+    def handle_starttag(self, tag, attrs):
+        if tag != 'input':
+            return 
+
+        attrs_dict = dict(attrs)
+        if attrs_dict['type'] != 'hidden':
+            return
+
+        self.value = attrs_dict['value']
+
 async def handleE621Url(message, submission_id):
     async with message.channel.typing():
-        headers = {
+        session = requests.Session()
+        session.headers.update({
             'User-Agent': f"{bot.user.name} by {config['e621']['username']}"
-        }
+        })
 
         # Get image data using API Endpoint
-        r = requests.get(f"https://e621.net/posts/{submission_id}.json", headers=headers, auth=(config['e621']['username'], config['e621']['api_key']))
+        r = session.get(f"https://e621.net/posts/{submission_id}.json", auth=(config['e621']['username'], config['e621']['api_key']))
+
+        if r.status_code == 503:
+            parser = formParser()
+            parser.feed(r.text)
+
+            session.post('https://e621.net/challenge', data={'_key': parser.value}) # TODO: Check if the challenge was successful?
+
+            # Retry the API Request
+            r = session.get(f"https://e621.net/posts/{submission_id}.json", auth=(config['e621']['username'], config['e621']['api_key']))
+
         data = r.json()
         post = data['post']
 
+        # Right now e6 blocks all embeds because of the button thingy, so bot will post all previews.. Revert later 
         # Check for global blacklist (ignore other links as they already come with previews)
-        if 'young' not in post['tags']['general'] or post['rating'] != 'e':
-            return
+        # if 'young' not in post['tags']['general'] or post['rating'] != 'e':
+        #     return
         
         embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
         embed.set_image(url=post['sample']['url'])
