@@ -359,9 +359,13 @@ async def on_message(message):
                     location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
                     f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB\n")
 
+                if size == 0:
+                    await message.reply('Tiktot returned an empty file, please try again.', delete_after = 20.0)
+                    continue
+
                 # Check for Discord filesize limit
                 if size > 8.0:
-                    await message.reply('I\'m sorry but this video is too large for Discord to handle :sob:')
+                    await message.reply('I\'m sorry but this video is too large for Discord to handle :sob:', delete_after = 20.0)
                     continue
 
                 await message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4'))
