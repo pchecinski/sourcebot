@@ -235,22 +235,6 @@ async def handleInkbunnyUrl(message, submission_id):
 
     await message.channel.send(embed=embed)
 
-# Helper class for E621 (solves 503 /challenge)
-class formParser(HTMLParser):
-    # Output value from parser
-    value = None
-    
-    # HTML Parser Methods
-    def handle_starttag(self, tag, attrs):
-        if tag != 'input':
-            return 
-
-        attrs_dict = dict(attrs)
-        if attrs_dict['type'] != 'hidden':
-            return
-
-        self.value = attrs_dict['value']
-
 async def handleE621Url(message, submission_id):
     async with message.channel.typing():
         session = requests.Session()
@@ -261,22 +245,12 @@ async def handleE621Url(message, submission_id):
         # Get image data using API Endpoint
         r = session.get(f"https://e621.net/posts/{submission_id}.json", auth=(config['e621']['username'], config['e621']['api_key']))
 
-        if r.status_code == 503:
-            parser = formParser()
-            parser.feed(r.text)
-
-            session.post('https://e621.net/challenge', data={'_key': parser.value}) # TODO: Check if the challenge was successful?
-
-            # Retry the API Request
-            r = session.get(f"https://e621.net/posts/{submission_id}.json", auth=(config['e621']['username'], config['e621']['api_key']))
-
         data = r.json()
         post = data['post']
 
-        # Right now e6 blocks all embeds because of the button thingy, so bot will post all previews.. Revert later 
         # Check for global blacklist (ignore other links as they already come with previews)
-        # if 'young' not in post['tags']['general'] or post['rating'] != 'e':
-        #     return
+        if 'young' not in post['tags']['general'] or post['rating'] != 'e':
+            return
         
         embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
         embed.set_image(url=post['sample']['url'])
