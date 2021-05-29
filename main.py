@@ -97,66 +97,65 @@ async def provideSources(message):
     source_urls = '\n'.join(sources)
     await message.reply(f"Source(s):\n{source_urls}")
 
-
-# Static data for pixiv
-AUTH_URL = "https://oauth.secure.pixiv.net/auth/token"
-BASE_URL = "https://app-api.pixiv.net"
-
-CLIENT_ID = "KzEZED7aC0vird8jWyHM38mXjNTY"
-CLIENT_SECRET = "W9JZoJe00qPvJsiyCGT3CCtC6ZUtdpKpzMbNlUGP"
-LOGIN_SECRET = "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c"
-
-HEADERS = {
-    "User-Agent": "PixivAndroidApp/5.0.115 (Android 6.0; PixivBot)",
-    "Accept-Language": "English"
-}
-
 # Source fetching functions
 async def handlePixivUrl(message, submission_id):
+    # Static data for pixiv
+    AUTH_URL = "https://oauth.secure.pixiv.net/auth/token"
+    BASE_URL = "https://app-api.pixiv.net"
+
+    CLIENT_ID = "KzEZED7aC0vird8jWyHM38mXjNTY"
+    CLIENT_SECRET = "W9JZoJe00qPvJsiyCGT3CCtC6ZUtdpKpzMbNlUGP"
+    LOGIN_SECRET = "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c"
+
+    HEADERS = {
+        "User-Agent": "PixivAndroidApp/5.0.115 (Android 6.0; PixivBot)",
+        "Accept-Language": "English"
+    }
+
+    # Prepare Access Token
+    session = requests.session()
+    session.headers.update(HEADERS)
+    client_time = datetime.datetime.utcnow().replace(microsecond=0).replace(tzinfo=datetime.timezone.utc).isoformat()
+
+    # Authenticate using Refresh token
+    response = session.post(
+        url = AUTH_URL,
+        data = {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "get_secure_url": 1,
+            "grant_type": "refresh_token",
+            "refresh_token": config['pixiv']['token']
+        },
+        headers = {
+            "X-Client-Time": client_time,
+            "X-Client-Hash": hashlib.md5(
+                (client_time + LOGIN_SECRET).encode("utf-8")
+            ).hexdigest()
+        },
+    )
+    data = response.json()
+    session.headers.update({"Authorization": f"Bearer {data['access_token']}"})
+
+    # Get Illustration details
+    response = session.get(
+        url = f"{BASE_URL}/v1/illust/detail",
+        params = { "illust_id": submission_id },
+    )
+    data = response.json()
+    session.headers.update({"Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"})
+
+    # Skip safe work
+    if data['illust']['x_restrict'] == 0:
+        return 
+
+    if data['illust']['x_restrict'] == 2:
+        await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
+        await message.delete()
+        return
+
     async with message.channel.typing():
-        # Prepare Access Token
-        session = requests.session()
-        session.headers.update(HEADERS)
-        client_time = datetime.datetime.utcnow().replace(microsecond=0).replace(tzinfo=datetime.timezone.utc).isoformat()
-
-        # Authenticate using Refresh token
-        response = session.post(
-            url = AUTH_URL,
-            data = {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "get_secure_url": 1,
-                "grant_type": "refresh_token",
-                "refresh_token": config['pixiv']['token']
-            },
-            headers = {
-                "X-Client-Time": client_time,
-                "X-Client-Hash": hashlib.md5(
-                    (client_time + LOGIN_SECRET).encode("utf-8")
-                ).hexdigest()
-            },
-        )
-        data = response.json()
-        session.headers.update({"Authorization": f"Bearer {data['access_token']}"})
-
-        # Get Illustration details
-        response = session.get(
-            url = f"{BASE_URL}/v1/illust/detail",
-            params = { "illust_id": submission_id },
-        )
-        data = response.json()
-        session.headers.update({"Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"})
-
-        # Skip safe work
-        if data['illust']['x_restrict'] == 0:
-            return 
-
-        if data['illust']['x_restrict'] == 2:
-            await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
-            await message.delete()
-            return
-
-        # Prepare the embed object
+         # Prepare the embed object
         embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
 
         if data['illust']['type'] == 'ugoira':
@@ -214,75 +213,71 @@ async def handlePixivUrl(message, submission_id):
     await message.channel.send(embed=embed, file=file)
 
 async def handleInkbunnyUrl(message, submission_id):
+    # Log in to API and get session ID
+    r = requests.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}")
+    data = r.json()
+    session = data['sid']
+
+    # Request information about the submission
+    r = requests.get(f"https://inkbunny.net/api_submissions.php?sid={session}&submission_ids={submission_id}")
+    data = r.json()
+
+    if len(data['submissions']) != 1:
+        return
+
+    # Get image url and send it
+    submission = data['submissions'][0]
+
     async with message.channel.typing():
-        # Log in to API and get session ID
-        r = requests.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}")
-        data = r.json()
-        session = data['sid']
-
-        # Request information about the submission
-        r = requests.get(f"https://inkbunny.net/api_submissions.php?sid={session}&submission_ids={submission_id}")
-        data = r.json()
-
-        if len(data['submissions']) != 1:
-            return
-
-        # Get image url and send it
-        submission = data['submissions'][0]
-
         embed = discord.Embed(title=f"{submission['title']} by {submission['username']}", color=discord.Color(0xFCE4F1))
         embed.set_image(url=submission['file_url_full'])
-
     await message.channel.send(embed=embed)
 
 async def handleE621Url(message, submission_id):
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': f"{bot.user.name} by {config['e621']['username']}"
+    })
+
+    # Get image data using API Endpoint
+    r = session.get(f"https://e621.net/posts/{submission_id}.json", auth=(config['e621']['username'], config['e621']['api_key']))
+
+    data = r.json()
+    post = data['post']
+
+    # Check for global blacklist (ignore other links as they already come with previews)
+    if 'young' not in post['tags']['general'] or post['rating'] != 'e':
+        return
+
     async with message.channel.typing():
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': f"{bot.user.name} by {config['e621']['username']}"
-        })
-
-        # Get image data using API Endpoint
-        r = session.get(f"https://e621.net/posts/{submission_id}.json", auth=(config['e621']['username'], config['e621']['api_key']))
-
-        data = r.json()
-        post = data['post']
-
-        # Check for global blacklist (ignore other links as they already come with previews)
-        if 'young' not in post['tags']['general'] or post['rating'] != 'e':
-            return
-        
         embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
         embed.set_image(url=post['sample']['url'])
-
     await message.channel.send(embed=embed)
 
 async def handleFuraffinityUrl(message, submission_id):
+    cookies = [
+        {"name": "a", "value": config['furaffinity']['cookie']['a']},
+        {"name": "b", "value": config['furaffinity']['cookie']['b']},
+    ]
+
+    api = faapi.FAAPI(cookies)
+    submission, _ = api.get_submission(submission_id)
+
+    if submission.rating == 'General':
+        return
+
     async with message.channel.typing():
-        cookies = [
-            {"name": "a", "value": config['furaffinity']['cookie']['a']},
-            {"name": "b", "value": config['furaffinity']['cookie']['b']},
-        ]
-
-        api = faapi.FAAPI(cookies)
-        submission, _ = api.get_submission(submission_id)
-
-        if submission.rating == 'General':
-            return
-
         embed = discord.Embed(title=f"{submission.title} by {submission.author}", color=discord.Color(0xFAAF3A))
         embed.set_image(url=submission.file_url)
-
     await message.channel.send(embed=embed)
 
 async def handleRule34xxxUrl(message, submission_id):
-    async with message.channel.typing(): 
-        r = requests.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}")
-        data = xmltodict.parse(r.text)
+    r = requests.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}")
+    data = xmltodict.parse(r.text)
 
+    async with message.channel.typing(): 
         embed = discord.Embed(color=discord.Color(0xABE5A4)) # TODO: Title? Maybe try to use source from the webiste if provided for other handers?
         embed.set_image(url=data['posts']['post']['@file_url'])
-
     await message.channel.send(embed=embed)
 
 async def handlePawooContent(message, submission_id):
