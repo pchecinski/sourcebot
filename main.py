@@ -9,19 +9,21 @@ import io
 import json
 import logging
 import os
+import random
 import re
 import requests
 import shlex
+import string
 import subprocess
 import xmltodict
 import yaml
 
+from TikTokApi import TikTokApi
 from dateutil import tz
 from discord.ext import commands
 from html.parser import HTMLParser
 from saucenao_api import SauceNao
 from tempfile import TemporaryDirectory
-from TikTokApi import TikTokApi
 from zipfile import ZipFile
 
 MAIN_CONFIG = "config/main.yml"
@@ -72,10 +74,6 @@ async def provideSources(message):
 
     for attachment in message.attachments:
         results = sauce.from_url(attachment.url)
-
-        # for result in results:
-        #     pprint(result)
-        #     pprint(result.urls)
 
         if len(results) == 0:
             continue
@@ -281,37 +279,37 @@ async def handleRule34xxxUrl(message, submission_id):
     await message.channel.send(embed=embed)
 
 async def handlePawooContent(message, submission_id):
+    r = requests.get(f"https://pawoo.net/api/v1/statuses/{submission_id}")
+    data = r.json()
+
+    with open(f"logs/pawoo_{submission_id}.json", 'w') as outfile:
+        json.dump(data, outfile)
+
+    # Skip statuses without media attachments
+    if 'media_attachments' not in data:
+        return
+
+    embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
+    embed.set_image(url=data['media_attachments'][0]['url'])
+
     #async with message.channel.typing():
-        r = requests.get(f"https://pawoo.net/api/v1/statuses/{submission_id}")
-        data = r.json()
-
-        with open(f"logs/pawoo_{submission_id}.json", 'w') as outfile:
-            json.dump(data, outfile)
-
-        # Skip statuses without media attachments
-        if 'media_attachments' not in data:
-            return
-
-        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
-        embed.set_image(url=data['media_attachments'][0]['url'])
-
     #await message.channel.send(embed=embed)
 
 async def handleBaraagContent(message, submission_id):
+    r = requests.get(f"https://baraag.net/api/v1/statuses/{submission_id}")
+    data = r.json()
+
+    with open(f"logs/baraag_{submission_id}.json", 'w') as outfile:
+        json.dump(data, outfile)
+
+    # Skip statuses without media attachments
+    if 'media_attachments' not in data:
+        return
+
+    embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
+    embed.set_image(url=data['media_attachments'][0]['url'])
+
     #async with message.channel.typing():
-        r = requests.get(f"https://baraag.net/api/v1/statuses/{submission_id}")
-        data = r.json()
-
-        with open(f"logs/baraag_{submission_id}.json", 'w') as outfile:
-            json.dump(data, outfile)
-
-        # Skip statuses without media attachments
-        if 'media_attachments' not in data:
-            return
-
-        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
-        embed.set_image(url=data['media_attachments'][0]['url'])
-
     #await message.channel.send(embed=embed)
 
 # Events 
@@ -320,7 +318,7 @@ async def on_ready():
     print(f"The great and only {bot.user.name} has connected to Discord API!")
 
 def tiktokHandler(url):
-    api = TikTokApi.get_instance()
+    api = TikTokApi.get_instance(use_test_endpoints=True, custom_did="".join(random.choices(string.digits, k=19)))
     return api.get_video_by_url(url)
 
 @bot.event 
