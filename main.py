@@ -1,6 +1,7 @@
 #!/home/discordbot/sourcebot-env/bin/python3.8
 # -*- coding: utf-8 -*-
 
+import aiohttp
 import datetime
 import discord
 import faapi
@@ -11,7 +12,6 @@ import logging
 import os
 import random
 import re
-import requests
 import shlex
 import string
 import subprocess
@@ -111,114 +111,115 @@ async def handlePixivUrl(message, submission_id):
     }
 
     # Prepare Access Token
-    session = requests.session()
-    session.headers.update(HEADERS)
-    client_time = datetime.datetime.utcnow().replace(microsecond=0).replace(tzinfo=datetime.timezone.utc).isoformat()
+    async with aiohttp.ClientSession() as session:
+        session.headers.update(HEADERS)
+        client_time = datetime.datetime.utcnow().replace(microsecond=0).replace(tzinfo=datetime.timezone.utc).isoformat()
 
-    # Authenticate using Refresh token
-    response = session.post(
-        url = AUTH_URL,
-        data = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "get_secure_url": 1,
-            "grant_type": "refresh_token",
-            "refresh_token": config['pixiv']['token']
-        },
-        headers = {
-            "X-Client-Time": client_time,
-            "X-Client-Hash": hashlib.md5(
-                (client_time + LOGIN_SECRET).encode("utf-8")
-            ).hexdigest()
-        },
-    )
-    data = response.json()
-    session.headers.update({"Authorization": f"Bearer {data['access_token']}"})
+        # Authenticate using Refresh token
+        async with session.post(
+            url = AUTH_URL,
+            data = {
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "get_secure_url": 1,
+                "grant_type": "refresh_token",
+                "refresh_token": config['pixiv']['token']
+            },
+            headers = {
+                "X-Client-Time": client_time,
+                "X-Client-Hash": hashlib.md5(
+                    (client_time + LOGIN_SECRET).encode("utf-8")
+                ).hexdigest()
+            },
+        ) as response:
+            data = await response.json()
+            session.headers.update({"Authorization": f"Bearer {data['access_token']}"})
 
-    # Get Illustration details
-    response = session.get(
-        url = f"{BASE_URL}/v1/illust/detail",
-        params = { "illust_id": submission_id },
-    )
-    data = response.json()
-    session.headers.update({"Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"})
+        # Get Illustration details
+        async with session.get(
+            url = f"{BASE_URL}/v1/illust/detail",
+            params = { "illust_id": submission_id },
+        ) as response:
+            data = await response.json()
+            session.headers.update({"Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"})
 
-    # Skip safe work
-    if data['illust']['x_restrict'] == 0:
-        return 
+        # Skip safe work
+        if data['illust']['x_restrict'] == 0:
+            return 
 
-    if data['illust']['x_restrict'] == 2:
-        await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
-        await message.delete()
-        return
+        if data['illust']['x_restrict'] == 2:
+            await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
+            await message.delete()
+            return
 
-    async with message.channel.typing():
-         # Prepare the embed object
-        embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
+        async with message.channel.typing():
+            # Prepare the embed object
+            embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
 
-        if data['illust']['type'] == 'ugoira':
-            busy_message = await message.channel.send("Oh hey, that's an animated one, it will take me a while!")
+            if data['illust']['type'] == 'ugoira':
+                busy_message = await message.channel.send("Oh hey, that's an animated one, it will take me a while!")
 
-            # Get file metadata (framges and zip_url)
-            response = session.get(
-                url = f"{BASE_URL}/v1/ugoira/metadata",
-                params = { "illust_id": submission_id },
-            )
-            data = response.json()
+                # Get file metadata (framges and zip_url)
+                async with session.get(
+                    url = f"{BASE_URL}/v1/ugoira/metadata",
+                    params = { "illust_id": submission_id },
+                ) as response:
+                    data = await response.json()
 
-            # Download and extract zip archive to temporary directory
-            with TemporaryDirectory() as tmpdir:
-                with session.get(data['ugoira_metadata']['zip_urls']['medium'], stream=True) as r:
-                    with ZipFile(io.BytesIO(r.content), 'r') as zip_ref: 
-                        zip_ref.extractall(tmpdir)
+                # Download and extract zip archive to temporary directory
+                with TemporaryDirectory() as tmpdir:
+                    async with session.get(data['ugoira_metadata']['zip_urls']['medium']) as response:
+                        with ZipFile(io.BytesIO(await response.read()), 'r') as zip_ref: 
+                            zip_ref.extractall(tmpdir)
 
-                # Prepare ffmpeg "concat demuxer" file
-                with open(f"{tmpdir}/ffconcat.txt", 'w') as f:
-                    for frame in data['ugoira_metadata']['frames']:
-                        frame_file = frame['file']
-                        frame_duration = round(frame['delay'] / 1000, 4)
+                    # Prepare ffmpeg "concat demuxer" file
+                    with open(f"{tmpdir}/ffconcat.txt", 'w') as f:
+                        for frame in data['ugoira_metadata']['frames']:
+                            frame_file = frame['file']
+                            frame_duration = round(frame['delay'] / 1000, 4)
 
-                        f.write(f"file {frame_file}\nduration {frame_duration}\n")
-                    f.write(f"file {data['ugoira_metadata']['frames'][-1]['file']}")
+                            f.write(f"file {frame_file}\nduration {frame_duration}\n")
+                        f.write(f"file {data['ugoira_metadata']['frames'][-1]['file']}")
 
-                if len(data['ugoira_metadata']['frames']) > 60:
-                    ext, ext_params = "webm", ""
-                else:
-                    ext, ext_params = "gif", "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
+                    if len(data['ugoira_metadata']['frames']) > 60:
+                        ext, ext_params = "webm", ""
+                    else:
+                        ext, ext_params = "gif", "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
 
-                # Run ffmpeg for the given file/directory
-                subprocess.call(
-                    shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt {ext_params} {submission_id}.{ext}"),
-                    cwd=os.path.abspath(tmpdir)
-                )
+                    # Run ffmpeg for the given file/directory
+                    subprocess.call(
+                        shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt {ext_params} {submission_id}.{ext}"),
+                        cwd=os.path.abspath(tmpdir)
+                    )
 
-                file = discord.File(f"{tmpdir}/{submission_id}.{ext}", filename=f"{submission_id}.{ext}")
-                embed.set_image(url=f"attachment://{submission_id}.{ext}")
+                    file = discord.File(f"{tmpdir}/{submission_id}.{ext}", filename=f"{submission_id}.{ext}")
+                    embed.set_image(url=f"attachment://{submission_id}.{ext}")
 
-            # Delete information about dealing with longer upload
-            await busy_message.delete()
+                # Delete information about dealing with longer upload
+                await busy_message.delete()
 
-        else:
-            if data['illust']['meta_single_page']:
-                url = data['illust']['meta_single_page']['original_image_url']
             else:
-                url = data['illust']['meta_pages'][0]['image_urls']['original']
-            ext = os.path.splitext(url)[1]
-            with session.get(url, stream=True) as r:
-                file = discord.File(io.BytesIO(r.content), filename=f"{submission_id}.{ext}")
-                embed.set_image(url=f"attachment://{submission_id}.{ext}")
+                if data['illust']['meta_single_page']:
+                    url = data['illust']['meta_single_page']['original_image_url']
+                else:
+                    url = data['illust']['meta_pages'][0]['image_urls']['original']
+                ext = os.path.splitext(url)[1]
+                async with session.get(url) as response:
+                    file = discord.File(io.BytesIO(await response.read()), filename=f"{submission_id}.{ext}")
+                    embed.set_image(url=f"attachment://{submission_id}.{ext}")
 
     await message.channel.send(embed=embed, file=file)
 
 async def handleInkbunnyUrl(message, submission_id):
-    # Log in to API and get session ID
-    r = requests.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}")
-    data = r.json()
-    session = data['sid']
+    async with aiohttp.ClientSession() as session:
+        # Log in to API and get session ID
+        async with session.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}") as r:
+            data = await r.json()
+            session_id = data['sid']
 
-    # Request information about the submission
-    r = requests.get(f"https://inkbunny.net/api_submissions.php?sid={session}&submission_ids={submission_id}")
-    data = r.json()
+        # Request information about the submission
+        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={submission_id}") as r:
+            data = await r.json()
 
     if len(data['submissions']) != 1:
         return
@@ -232,20 +233,19 @@ async def handleInkbunnyUrl(message, submission_id):
     await message.channel.send(embed=embed)
 
 async def handleE621Url(message, submission_id):
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': f"{bot.user.name} by {config['e621']['username']}"
-    })
+    async with aiohttp.ClientSession() as session:
+        session.headers.update({
+            'User-Agent': f"{bot.user.name} by {config['e621']['username']}"
+        })
 
-    # Get image data using API Endpoint
-    r = session.get(f"https://e621.net/posts/{submission_id}.json", auth=(config['e621']['username'], config['e621']['api_key']))
+        # Get image data using API Endpoint
+        async with session.get(f"https://e621.net/posts/{submission_id}.json", auth=aiohttp.BasicAuth(config['e621']['username'], config['e621']['api_key'])) as r:
+            data = await r.json()
+            post = data['post']
 
-    data = r.json()
-    post = data['post']
-
-    # Check for global blacklist (ignore other links as they already come with previews)
-    if 'young' not in post['tags']['general'] or post['rating'] != 'e':
-        return
+            # Check for global blacklist (ignore other links as they already come with previews)
+            if 'young' not in post['tags']['general'] or post['rating'] != 'e':
+                return
 
     async with message.channel.typing():
         embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
@@ -270,8 +270,9 @@ async def handleFuraffinityUrl(message, submission_id):
     await message.channel.send(embed=embed)
 
 async def handleRule34xxxUrl(message, submission_id):
-    r = requests.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}")
-    data = xmltodict.parse(r.text)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}") as r:
+            data = xmltodict.parse(await r.text())
 
     async with message.channel.typing(): 
         embed = discord.Embed(color=discord.Color(0xABE5A4)) # TODO: Title? Maybe try to use source from the webiste if provided for other handers?
@@ -279,8 +280,9 @@ async def handleRule34xxxUrl(message, submission_id):
     await message.channel.send(embed=embed)
 
 async def handlePawooContent(message, submission_id):
-    r = requests.get(f"https://pawoo.net/api/v1/statuses/{submission_id}")
-    data = r.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"https://pawoo.net/api/v1/statuses/{submission_id}") as r:
+            data = await r.json()
 
     with open(f"logs/pawoo_{submission_id}.json", 'w') as outfile:
         json.dump(data, outfile)
@@ -296,8 +298,9 @@ async def handlePawooContent(message, submission_id):
     #await message.channel.send(embed=embed)
 
 async def handleBaraagContent(message, submission_id):
-    r = requests.get(f"https://baraag.net/api/v1/statuses/{submission_id}")
-    data = r.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"https://baraag.net/api/v1/statuses/{submission_id}") as r:
+            data = await r.json()
 
     with open(f"logs/baraag_{submission_id}.json", 'w') as outfile:
         json.dump(data, outfile)
@@ -339,12 +342,12 @@ async def on_message(message):
             for match in re.finditer(r"(?<=https://vm.tiktok.com/)(\w+)", content):
                 short_url = 'https://vm.tiktok.com/' + match.group(1)
 
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36'}
-                s = requests.Session()
-
-                r = s.head(short_url, headers=headers)
-                r = s.head(r.headers['Location'], headers=headers)
-                url = r.headers['Location'].split('?')[0] # remove all the junk in query data
+                async with aiohttp.ClientSession() as session:
+                    session.headers.update({
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36'
+                    })
+                    async with session.head(short_url, allow_redirects=True) as r:
+                        url = str(r.url).split('?')[0] # remove all the junk in query data
 
                 data = await bot.loop.run_in_executor(None, tiktokHandler, url)
                 size = len(data) / 1048576
