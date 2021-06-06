@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import logging
+import magic
 import os
 import random
 import re
@@ -322,6 +323,7 @@ async def on_ready():
 
 def tiktokHandler(url):
     api = TikTokApi.get_instance(use_test_endpoints=True, custom_did="".join(random.choices(string.digits, k=19)))
+    print(id(api))
     return api.get_video_by_url(url)
 
 @bot.event 
@@ -351,12 +353,20 @@ async def on_message(message):
 
                 data = await bot.loop.run_in_executor(None, tiktokHandler, url)
                 size = len(data) / 1048576
+                mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
 
                 # Log tiktok urls to tiktok.log
                 asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 with open('logs/tiktok.log', 'a') as f:
                     location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-                    f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB\n")
+                    f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB, mine: {mime}\n")
+
+                if mime != 'video/mp4':
+                    with open(f"tiktok-{match.group(1)}.data", "wb") as f:
+                        f.write(data)
+
+                    await message.reply(f"Returned data isn't 'video/mp4', tell storky that it broke **again**.\n(he most likely saw this error when it happened, but maybe he is asleep right now? What am I to know it, I'm just a bot.)", delete_after = 20.0)
+                    continue
 
                 if size == 0:
                     await message.reply('Tiktot returned an empty file, please try again.', delete_after = 20.0)
