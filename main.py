@@ -42,18 +42,23 @@ bot = commands.Bot(command_prefix='$', intents=intents)
 
 # Role reactions
 async def handle_reaction(payload):
-    # Check if reaction was added/removed in the right channel
-    channel = bot.get_channel(payload.channel_id)
-    if not channel.name == config['discord']['role_channel']:
-        return
-
     # Parse emoji as string (works for custom emojis and unicode)
     emoji = str(payload.emoji)
+
+    # Check if reaction was added/removed in the right channel
+    channel = bot.get_channel(payload.channel_id)
 
     # Fetch message and and member
     message = await channel.fetch_message(payload.message_id)
     guild = bot.get_guild(payload.guild_id)
     member = guild.get_member(payload.user_id)
+
+    if payload.event_type == 'REACTION_ADD' and message.author == bot.user and emoji == '❌':
+        await message.delete()
+        return
+
+    if not channel.name == config['discord']['role_channel']:
+        return
 
     # Remove reaction if it isn't in roles dictionary
     if not emoji in roles_settings['roles']:
@@ -322,8 +327,7 @@ async def on_ready():
     print(f"The great and only {bot.user.name} has connected to Discord API!")
 
 def tiktokHandler(url):
-    api = TikTokApi.get_instance(use_test_endpoints=True, custom_did="".join(random.choices(string.digits, k=19)))
-    print(id(api))
+    api = TikTokApi.get_instance(use_test_endpoints = True, custom_did = "".join(random.choices(string.digits, k=19)))
     return api.get_video_by_url(url)
 
 @bot.event 
@@ -359,7 +363,7 @@ async def on_message(message):
                 asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 with open('logs/tiktok.log', 'a') as f:
                     location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-                    f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB, mine: {mime}\n")
+                    f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB, mime: {mime}\n")
 
                 if mime != 'video/mp4':
                     with open(f"tiktok-{match.group(1)}.data", "wb") as f:
