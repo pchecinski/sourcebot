@@ -43,7 +43,7 @@ soupsieve==2.2.1
 TikTokApi==3.9.6
 toml==0.10.2
 typing-extensions==3.10.0.0
-urllib3==1.25.11
+urllib3==1.26.5
 websockets==9.0.2
 Werkzeug==2.0.1
 wsproto==1.0.0
