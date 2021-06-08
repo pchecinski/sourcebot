@@ -14,8 +14,8 @@ import magic
 import os
 import queue
 import random
-import requests
 import re
+import requests
 import shlex
 import string
 import subprocess
@@ -90,7 +90,6 @@ def tiktok_worker():
 
         tiktok_queue.task_done()
 
-
 # Role reactions
 async def handle_reaction(payload):
     # Parse emoji as string (works for custom emojis and unicode)
@@ -125,6 +124,7 @@ async def handle_reaction(payload):
     if payload.event_type == 'REACTION_REMOVE':
         await member.remove_roles(role, reason='emoji_role_remove')
 
+# Sourcenao
 async def provideSources(message): 
     sauce = SauceNao(config['saucenao']['token'])
     sources = []
@@ -152,7 +152,7 @@ async def provideSources(message):
     source_urls = '\n'.join(sources)
     await message.reply(f"Source(s):\n{source_urls}")
 
-# Source fetching functions
+# Source fetching
 async def handlePixivUrl(message, submission_id):
     # Static data for pixiv
     AUTH_URL = "https://oauth.secure.pixiv.net/auth/token"
