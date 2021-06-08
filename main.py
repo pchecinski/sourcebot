@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import aiohttp
+import asyncio
 import datetime
 import discord
 import faapi
@@ -11,11 +12,14 @@ import json
 import logging
 import magic
 import os
+import queue
 import random
+import requests
 import re
 import shlex
 import string
 import subprocess
+import threading
 import xmltodict
 import yaml
 
@@ -39,6 +43,53 @@ intents = discord.Intents.default()
 intents.members = True
 intents.reactions = True
 bot = commands.Bot(command_prefix='$', intents=intents)
+
+# Tiktok queue
+tiktok_queue = queue.Queue()
+
+def tiktok_worker():
+    while True:
+        # Get a task from queue
+        message, short_url = tiktok_queue.get()
+
+        # Prepare session for tiktok request
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36'
+        })
+        r = session.head(short_url, allow_redirects=True)
+        url = str(r.url).split('?')[0] # remove all the junk in query data
+
+        api = TikTokApi.get_instance(use_test_endpoints=True, custom_did="".join(random.choices(string.digits, k=19)))
+        data = api.get_video_by_url(url)
+        size = len(data) / 1048576
+        mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
+
+        # Log tiktok urls to tiktok.log
+        asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open('logs/tiktok.log', 'a') as f:
+            location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
+            f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB, mime: {mime}\n")
+
+        if mime != 'video/mp4':
+            print(f"Returned data isn't 'video/mp4', tell storky that it broke **again**.\n(he most likely saw this error when it happened, but maybe he is asleep right now? What am I to know it, I'm just a bot.)")
+
+        if size == 0:
+            print('Tiktot returned an empty file, please try again.')
+
+        if size > 8.0:
+            print('I\'m sorry but this video is too large for Discord to handle :sob:')
+
+        coro = message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4'))
+        fut = asyncio.run_coroutine_threadsafe(coro, bot.loop)
+        try:
+            result = fut.result()
+        except:
+            # an error happened sending the message
+            pass
+
+        tiktok_queue.task_done()
+
 
 # Role reactions
 async def handle_reaction(payload):
@@ -326,10 +377,6 @@ async def handleBaraagContent(message, submission_id):
 async def on_ready():
     print(f"The great and only {bot.user.name} has connected to Discord API!")
 
-def tiktokHandler(url):
-    api = TikTokApi.get_instance(use_test_endpoints = True, custom_did = "".join(random.choices(string.digits, k=19)))
-    return api.get_video_by_url(url)
-
 @bot.event 
 async def on_message(message):
     try:
@@ -348,40 +395,8 @@ async def on_message(message):
             for match in re.finditer(r"(?<=https://vm.tiktok.com/)(\w+)", content):
                 short_url = 'https://vm.tiktok.com/' + match.group(1)
 
-                async with aiohttp.ClientSession() as session:
-                    session.headers.update({
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36'
-                    })
-                    async with session.head(short_url, allow_redirects=True) as r:
-                        url = str(r.url).split('?')[0] # remove all the junk in query data
-
-                data = await bot.loop.run_in_executor(None, tiktokHandler, url)
-                size = len(data) / 1048576
-                mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
-
-                # Log tiktok urls to tiktok.log
-                asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                with open('logs/tiktok.log', 'a') as f:
-                    location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-                    f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB, mime: {mime}\n")
-
-                if mime != 'video/mp4':
-                    with open(f"tiktok-{match.group(1)}.data", "wb") as f:
-                        f.write(data)
-
-                    await message.reply(f"Returned data isn't 'video/mp4', tell storky that it broke **again**.\n(he most likely saw this error when it happened, but maybe he is asleep right now? What am I to know it, I'm just a bot.)", delete_after = 20.0)
-                    continue
-
-                if size == 0:
-                    await message.reply('Tiktot returned an empty file, please try again.', delete_after = 20.0)
-                    continue
-
-                # Check for Discord filesize limit
-                if size > 8.0:
-                    await message.reply('I\'m sorry but this video is too large for Discord to handle :sob:', delete_after = 20.0)
-                    continue
-
-                await message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4'))
+                # Add task to tiktok queue
+                tiktok_queue.put((message, short_url))
 
         # Source providing service handlers
         if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
@@ -455,6 +470,9 @@ async def remove(ctx, emoji: str):
 
 if __name__ == '__main__':
     logging.basicConfig(filename='logs/error.log', format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+
+    # Start tiktok thread
+    threading.Thread(target=tiktok_worker, daemon=True).start()
 
     # Main Loop
     bot.run(config['discord']['token'])
