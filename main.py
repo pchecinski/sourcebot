@@ -99,9 +99,13 @@ async def handle_reaction(payload):
     if channel is None:
         return
 
-    # Fetch message and and member
+    # Fetch message and guild
     message = await channel.fetch_message(payload.message_id)
     guild = bot.get_guild(payload.guild_id)
+    if guild is None:
+        return
+
+    # Fetch member
     member = guild.get_member(payload.user_id)
 
     # Remove bots message on "x" reaction
