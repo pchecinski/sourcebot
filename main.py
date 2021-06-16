@@ -56,8 +56,14 @@ def tiktok_worker():
         try:
             data = api.get_video_by_url(url)
         except Exception as e:
-            # api.clean_up()
-            logging.exception("TIKTOK THREAD: Exception occurred", exc_info=True)
+            logging.exception("TIKTOK THREAD: Exception occurred", exc_info=True) # api.clean_up() # TODO: possible fix for some errors
+
+            coro = message.add_reaction('<:boterror:854665168889184256>')
+            task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
+            result = task.result()
+
+            tiktok_queue.task_done()
+            continue
 
         size = len(data) / 1048576
         mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
