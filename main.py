@@ -50,18 +50,15 @@ tiktok_queue = queue.Queue()
 def tiktok_worker():
     while True:
         # Get a task from queue
-        message, short_url = tiktok_queue.get()
+        message, url = tiktok_queue.get()
 
-        # Prepare session for tiktok request
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36'
-        })
-        r = session.head(short_url, allow_redirects=True)
-        url = str(r.url).split('?')[0] # remove all the junk in query data
+        api = TikTokApi.get_instance(custom_did="".join(random.choices(string.digits, k=19)))
+        try:
+            data = api.get_video_by_url(url)
+        except Exception as e:
+            # api.clean_up()
+            logging.exception("TIKTOK THREAD: Exception occurred", exc_info=True)
 
-        api = TikTokApi.get_instance(use_test_endpoints=True, custom_did="".join(random.choices(string.digits, k=19)))
-        data = api.get_video_by_url(url)
         size = len(data) / 1048576
         mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
 
@@ -69,24 +66,20 @@ def tiktok_worker():
         asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with open('logs/tiktok.log', 'a') as f:
             location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-            f.write(f"[{asctime}] [{location}]\n{short_url}, {url}, size: {size:.2f} MB, mime: {mime}\n")
+            f.write(f"[{asctime}] [{location}]\n{url}, size: {size:.2f} MB, mime: {mime}\n")
 
         if mime != 'video/mp4':
-            print(f"Returned data isn't 'video/mp4', tell storky that it broke **again**.\n(he most likely saw this error when it happened, but maybe he is asleep right now? What am I to know it, I'm just a bot.)")
+            coro = message.add_reaction('<:boterror:854665168889184256>')
+        elif size == 0:
+            coro = message.add_reaction('<:botempty:854665168888528896>')
+        elif size > 8.0:
+            coro = message.add_reaction('<:botlarge:854665168831381504>')
+        else:
+            coro = message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4')) 
 
-        if size == 0:
-            print('Tiktot returned an empty file, please try again.')
-
-        if size > 8.0:
-            print('I\'m sorry but this video is too large for Discord to handle :sob:')
-
-        coro = message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4'))
-        fut = asyncio.run_coroutine_threadsafe(coro, bot.loop)
-        try:
-            result = fut.result()
-        except:
-            # an error happened sending the message
-            pass
+        # Run async task on the bot thread
+        task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
+        result = task.result()
 
         tiktok_queue.task_done()
 
@@ -95,18 +88,22 @@ async def handle_reaction(payload):
     # Parse emoji as string (works for custom emojis and unicode)
     emoji = str(payload.emoji)
 
-    # Check if reaction was added/removed in the right channel
+    # Get channel object, pass on None
     channel = bot.get_channel(payload.channel_id)
+    if channel is None:
+        return
 
     # Fetch message and and member
     message = await channel.fetch_message(payload.message_id)
     guild = bot.get_guild(payload.guild_id)
     member = guild.get_member(payload.user_id)
 
+    # Remove bots message on "x" reaction
     if payload.event_type == 'REACTION_ADD' and message.author == bot.user and emoji == '❌':
         await message.delete()
         return
 
+    # Check if reaction was added/removed in the right channel
     if not channel.name == config['discord']['role_channel']:
         return
 
@@ -375,7 +372,7 @@ async def handleBaraagContent(message, submission_id):
 # Events 
 @bot.event
 async def on_ready():
-    print(f"The great and only {bot.user.name} has connected to Discord API!")
+    print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]: The great and only {bot.user.name} has connected to Discord API!")
 
 @bot.event 
 async def on_message(message):
@@ -392,11 +389,27 @@ async def on_message(message):
 
         # Post tiktok videos
         if message.channel.id in config['discord']['tiktok_channels'] or isinstance(message.channel, discord.DMChannel):
+            # Support for short url (mobile links)
             for match in re.finditer(r"(?<=https://vm.tiktok.com/)(\w+)", content):
                 short_url = 'https://vm.tiktok.com/' + match.group(1)
 
+                # Parse short url with HTTP HEAD + redirects
+                async with aiohttp.ClientSession() as session:
+                    session.headers.update({
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36'
+                    })
+                    async with session.head(short_url, allow_redirects=True) as r:
+                        url = str(r.url).split('?')[0] # remove all the junk in query data
+
                 # Add task to tiktok queue
-                tiktok_queue.put((message, short_url))
+                tiktok_queue.put((message, url))
+
+            # Support for long url (browser links)
+            for match in re.finditer(r"(?<=https://www.tiktok.com/)(@\w+\/video\/\w+)", content):
+                url = 'https://www.tiktok.com/' + match.group(1)
+
+                # Add task to tiktok queue
+                tiktok_queue.put((message, url))
 
         # Source providing service handlers
         if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
