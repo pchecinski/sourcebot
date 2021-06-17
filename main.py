@@ -22,6 +22,7 @@ import subprocess
 import threading
 import xmltodict
 import yaml
+import youtube_dl
 
 from TikTokApi import TikTokApi
 from dateutil import tz
@@ -379,6 +380,30 @@ async def handleBaraagContent(message, submission_id):
     #async with message.channel.typing():
     #await message.channel.send(embed=embed)
 
+async def handleTwitterVideo(message, submission_id):
+    with TemporaryDirectory() as tmpdir:
+        name = submission_id.split('/')[-1]
+        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'no_warnings': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{name}.%(ext)s"}) as ydl:
+            try:
+                meta = ydl.extract_info(f"https://twitter.com/{submission_id}")
+            except:
+                print('failed successfully')
+                return 
+
+            async with message.channel.typing(): 
+                # ext, ext_params = "webm", ""
+                # subprocess.call(
+                #     shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -i {name}.{meta['ext']} {ext_params} {name}.{ext}"),
+                #     cwd=os.path.abspath(tmpdir)
+                # )
+
+                with open(f"{tmpdir}/{name}.{meta['ext']}", 'rb') as f:
+                    # embed = discord.Embed(title=f"{name}", color=discord.Color(0x69b005))
+
+                    file = discord.File(f, filename=f"{name}.{meta['ext']}")
+                    # embed.set_image(url=f"attachment://{name}.{ext}")
+                await message.channel.send(file=file)
+
 # Events 
 @bot.event
 async def on_ready():
@@ -453,6 +478,9 @@ async def on_message(message):
 
             for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", content):
                 await handleBaraagContent(message, match.group(1))    
+
+            for match in re.finditer(r"(?<=https://twitter.com/)(\w+/status/\w+)", content): 
+                await handleTwitterVideo(message, match.group(1))
 
     except Exception as e:
         logging.exception("Exception occurred", exc_info=True)
