@@ -48,6 +48,9 @@ bot = commands.Bot(command_prefix='$', intents=intents)
 # Tiktok queue
 tiktok_queue = queue.Queue()
 
+# Spoiler regular expression
+spoiler_regex = re.compile(r"\|\|(.*?)\|\|", re.DOTALL)
+
 def tiktok_worker():
     while True:
         # Get a task from queue
@@ -56,12 +59,12 @@ def tiktok_worker():
         api = TikTokApi.get_instance(custom_did="".join(random.choices(string.digits, k=19)))
         try:
             data = api.get_video_by_url(url)
-        except Exception as e:
+        except Exception:
             logging.exception("TIKTOK THREAD: Exception occurred", exc_info=True) # api.clean_up() # TODO: possible fix for some errors
 
             coro = message.add_reaction('<:boterror:854665168889184256>')
             task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
-            result = task.result()
+            task.result()
 
             tiktok_queue.task_done()
             continue
@@ -82,11 +85,11 @@ def tiktok_worker():
         elif size > 8.0:
             coro = message.add_reaction('<:botlarge:854665168831381504>')
         else:
-            coro = message.reply(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4')) 
+            coro = message.channel.send(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4')) 
 
         # Run async task on the bot thread
         task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
-        result = task.result()
+        task.result()
 
         tiktok_queue.task_done()
 
@@ -247,7 +250,7 @@ async def handlePixivUrl(message, submission_id):
                         f.write(f"file {data['ugoira_metadata']['frames'][-1]['file']}")
 
                     if len(data['ugoira_metadata']['frames']) > 60:
-                        ext, ext_params = "webm", ""
+                        ext, ext_params = "mp4", ""
                     else:
                         ext, ext_params = "gif", "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
 
@@ -257,8 +260,13 @@ async def handlePixivUrl(message, submission_id):
                         cwd=os.path.abspath(tmpdir)
                     )
 
+                    # Prepare attachment file
                     file = discord.File(f"{tmpdir}/{submission_id}.{ext}", filename=f"{submission_id}.{ext}")
                     embed.set_image(url=f"attachment://{submission_id}.{ext}")
+
+                    # Do not embed videos, only embed gifs
+                    if ext == 'mp4':
+                        embed = None
 
                 # Delete information about dealing with longer upload
                 await busy_message.delete()
@@ -393,8 +401,8 @@ async def handleTwitterVideo(message, submission_id):
                 print(f"{tweet_id}: text only")
                 return 
 
-            if tweet_data['includes']['media'][0]['type'] != 'video':
-                print(f"{tweet_id}: video attachment not found")
+            if tweet_data['includes']['media'][0]['type'] != 'video' and tweet_data['includes']['media'][0]['type'] != 'animated_gif':
+                print(f"{tweet_id}: video/gif attachment not found")
                 return
 
     # Download video to temporary directory
@@ -407,17 +415,8 @@ async def handleTwitterVideo(message, submission_id):
                 return 
 
             async with message.channel.typing(): 
-                # ext, ext_params = "webm", ""
-                # subprocess.call(
-                #     shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -i {name}.{meta['ext']} {ext_params} {name}.{ext}"),
-                #     cwd=os.path.abspath(tmpdir)
-                # )
-
                 with open(f"{tmpdir}/{tweet_id}.{meta['ext']}", 'rb') as f:
-                    # embed = discord.Embed(title=f"{name}", color=discord.Color(0x69b005))
-
                     file = discord.File(f, filename=f"{tweet_id}.{meta['ext']}")
-                    # embed.set_image(url=f"attachment://{name}.{ext}")
                 await message.channel.send(file=file)
 
 # Events 
@@ -435,8 +434,16 @@ async def on_message(message):
         await bot.process_commands(message)
 
         # Ignore text in valid spoiler tag
-        spoiler_regeq = re.compile('\|\|(.*?)\|\|', re.DOTALL)
-        content = re.sub(spoiler_regeq, '', message.content)
+        content = re.sub(spoiler_regex, '', message.content)
+
+        # Meme feature
+        if isinstance(message.channel, discord.DMChannel) and ("stop" in content or "no" in content):  
+            asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            with open('logs/subscription.log', 'a') as f:
+                location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
+                f.write(f"[{asctime}] [{location}] {message.id}")
+            await message.reply("too bad.")
+            return
 
         # Post tiktok videos
         if message.channel.id in config['discord']['tiktok_channels'] or isinstance(message.channel, discord.DMChannel):
@@ -498,7 +505,7 @@ async def on_message(message):
             for match in re.finditer(r"(?<=https://twitter.com/)(\w+/status/\w+)", content): 
                 await handleTwitterVideo(message, match.group(1))
 
-    except Exception as e:
+    except Exception:
         logging.exception("Exception occurred", exc_info=True)
 
 @bot.event
