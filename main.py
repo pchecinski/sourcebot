@@ -381,13 +381,29 @@ async def handleBaraagContent(message, submission_id):
     #await message.channel.send(embed=embed)
 
 async def handleTwitterVideo(message, submission_id):
+    # Tweet ID from URL
+    tweet_id = submission_id.split('/')[-1]
+    async with aiohttp.ClientSession() as session:
+        session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
+
+        async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys&media.fields=type") as response:
+            tweet_data = await response.json() 
+
+            if 'includes' not in tweet_data:
+                print(f"{tweet_id}: text only")
+                return 
+
+            if tweet_data['includes']['media'][0]['type'] != 'video':
+                print(f"{tweet_id}: video attachment not found")
+                return
+
+    # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
-        name = submission_id.split('/')[-1]
-        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'no_warnings': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{name}.%(ext)s"}) as ydl:
+        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
             try:
                 meta = ydl.extract_info(f"https://twitter.com/{submission_id}")
             except:
-                print('failed successfully')
+                print(f"{tweet_id}: ytdl exception, that shouldn't happen..")
                 return 
 
             async with message.channel.typing(): 
@@ -397,10 +413,10 @@ async def handleTwitterVideo(message, submission_id):
                 #     cwd=os.path.abspath(tmpdir)
                 # )
 
-                with open(f"{tmpdir}/{name}.{meta['ext']}", 'rb') as f:
+                with open(f"{tmpdir}/{tweet_id}.{meta['ext']}", 'rb') as f:
                     # embed = discord.Embed(title=f"{name}", color=discord.Color(0x69b005))
 
-                    file = discord.File(f, filename=f"{name}.{meta['ext']}")
+                    file = discord.File(f, filename=f"{tweet_id}.{meta['ext']}")
                     # embed.set_image(url=f"attachment://{name}.{ext}")
                 await message.channel.send(file=file)
 

@@ -29,3 +29,6 @@ pixiv:
 
 saucenao:
   token: "-"
+
+twitter:
+  token: "-"
