@@ -73,10 +73,9 @@ def tiktok_worker():
         mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
 
         # Log tiktok urls to tiktok.log
-        asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with open('logs/tiktok.log', 'a') as f:
             location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-            f.write(f"[{asctime}] [{location}]\n{url}, size: {size:.2f} MB, mime: {mime}\n")
+            f.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{url}, size: {size:.2f} MB, mime: {mime}\n")
 
         if mime != 'video/mp4':
             coro = message.add_reaction('<:boterror:854665168889184256>')
@@ -149,13 +148,19 @@ async def provideSources(message):
         if results[0].similarity < 80:
             continue
 
-        sources.append(f"<{results[0].urls[0]}>")
+        try:
+            sources.append(f"<{results[0].urls[0]}>")
+        except Exception:
+            from pprint import pprint
+            print(attachment.url)
+            pprint(results)
+            logging.exception("Exception occurred (source provider)", exc_info=True)
+
 
         # Log source to sources.log
-        asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with open('logs/sources.log', 'a') as f:
             location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-            f.write(f"[{asctime}] [{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
+            f.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
     
     if len(sources) == 0:
         return
@@ -357,36 +362,36 @@ async def handlePawooContent(message, submission_id):
         async with session.get(f"https://pawoo.net/api/v1/statuses/{submission_id}") as r:
             data = await r.json()
 
-    with open(f"logs/pawoo_{submission_id}.json", 'w') as outfile:
-        json.dump(data, outfile)
-
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
         return
 
-    embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
-    embed.set_image(url=data['media_attachments'][0]['url'])
+    # Skip account with pawoo.net or artalley.social in profile URL
+    if 'pawoo.net' in data['account']['url'] or 'artalley.social' in data['account']['url']:
+        return
 
-    #async with message.channel.typing():
-    #await message.channel.send(embed=embed)
+    async with message.channel.typing(): 
+        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
+        embed.set_image(url=data['media_attachments'][0]['url'])
+    await message.channel.send(embed=embed)
 
 async def handleBaraagContent(message, submission_id):
     async with aiohttp.ClientSession() as session:
         async with session.get(f"https://baraag.net/api/v1/statuses/{submission_id}") as r:
             data = await r.json()
 
-    with open(f"logs/baraag_{submission_id}.json", 'w') as outfile:
-        json.dump(data, outfile)
-
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
         return
 
-    embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
-    embed.set_image(url=data['media_attachments'][0]['url'])
+    # Skip account with baraag.net or artalley.social in profile URL
+    if 'baraag.net' in data['account']['url'] or 'artalley.social' in data['account']['url']:
+        return
 
-    #async with message.channel.typing():
-    #await message.channel.send(embed=embed)
+    async with message.channel.typing(): 
+        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
+        embed.set_image(url=data['media_attachments'][0]['url'])
+    await message.channel.send(embed=embed)
 
 async def handleTwitterVideo(message, submission_id):
     # Tweet ID from URL
@@ -398,11 +403,9 @@ async def handleTwitterVideo(message, submission_id):
             tweet_data = await response.json() 
 
             if 'includes' not in tweet_data:
-                print(f"{tweet_id}: text only")
                 return 
 
             if tweet_data['includes']['media'][0]['type'] != 'video' and tweet_data['includes']['media'][0]['type'] != 'animated_gif':
-                print(f"{tweet_id}: video/gif attachment not found")
                 return
 
     # Download video to temporary directory
@@ -410,19 +413,25 @@ async def handleTwitterVideo(message, submission_id):
         with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
             try:
                 meta = ydl.extract_info(f"https://twitter.com/{submission_id}")
+                filename = f"{tweet_id}.{meta['ext']}"
             except:
                 print(f"{tweet_id}: ytdl exception, that shouldn't happen..")
                 return 
 
+            if os.stat(f"{tmpdir}/{filename}").st_size / 1048576 > 8:
+                os.rename(f"{tmpdir}/{filename}", f"/home/discordbot/media/{filename}")
+                print(f"/home/discordbot/media/{filename}")
+                return
+
             async with message.channel.typing(): 
-                with open(f"{tmpdir}/{tweet_id}.{meta['ext']}", 'rb') as f:
-                    file = discord.File(f, filename=f"{tweet_id}.{meta['ext']}")
+                with open(f"{tmpdir}/{filename}", 'rb') as f:
+                    file = discord.File(f, filename=filename)
                 await message.channel.send(file=file)
 
 # Events 
 @bot.event
 async def on_ready():
-    print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]: The great and only {bot.user.name} has connected to Discord API!")
+    print(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}]: The great and only {bot.user.name} has connected to Discord API!")
 
 @bot.event 
 async def on_message(message):
@@ -435,15 +444,6 @@ async def on_message(message):
 
         # Ignore text in valid spoiler tag
         content = re.sub(spoiler_regex, '', message.content)
-
-        # Meme feature
-        if isinstance(message.channel, discord.DMChannel) and ("stop" in content or "no" in content):  
-            asctime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            with open('logs/subscription.log', 'a') as f:
-                location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-                f.write(f"[{asctime}] [{location}] {message.id}")
-            await message.reply("too bad.")
-            return
 
         # Post tiktok videos
         if message.channel.id in config['discord']['tiktok_channels'] or isinstance(message.channel, discord.DMChannel):
