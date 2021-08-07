@@ -150,17 +150,16 @@ async def provideSources(message):
 
         try:
             sources.append(f"<{results[0].urls[0]}>")
+            
+            # Log source to sources.log
+            with open('logs/sources.log', 'a') as f:
+                location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
+                f.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
+
         except Exception:
             from pprint import pprint
-            print(attachment.url)
-            pprint(results)
+            pprint(f"{attachment.url}, {results}")
             logging.exception("Exception occurred (source provider)", exc_info=True)
-
-
-        # Log source to sources.log
-        with open('logs/sources.log', 'a') as f:
-            location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-            f.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
     
     if len(sources) == 0:
         return
@@ -417,6 +416,14 @@ async def handleTwitterVideo(message, submission_id):
             except:
                 print(f"{tweet_id}: ytdl exception, that shouldn't happen..")
                 return 
+
+            # Convert Animated GIFs to .gif so they loop in Discord
+            if tweet_data['includes']['media'][0]['type'] == 'animated_gif':
+                subprocess.call(
+                    shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} -vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 {tweet_id}.gif"),
+                    cwd=os.path.abspath(tmpdir)
+                )
+                filename = f"{tweet_id}.gif"
 
             if os.stat(f"{tmpdir}/{filename}").st_size / 1048576 > 8:
                 os.rename(f"{tmpdir}/{filename}", f"/home/discordbot/media/{filename}")
