@@ -321,7 +321,7 @@ async def handleE621Url(message, submission_id):
             post = data['post']
 
             # Check for global blacklist (ignore other links as they already come with previews)
-            if 'young' not in post['tags']['general'] or post['rating'] != 'e':
+            if 'young' not in post['tags']['general'] or post['rating'] == 's':
                 return
 
     async with message.channel.typing():
