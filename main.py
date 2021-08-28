@@ -509,8 +509,9 @@ async def on_message(message):
             for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", content):
                 await handleBaraagContent(message, match.group(1))    
 
-            for match in re.finditer(r"(?<=https://twitter.com/)(\w+/status/\w+)", content): 
-                await handleTwitterVideo(message, match.group(1))
+            # Disabled, discord/twitter fixed embeds
+            # for match in re.finditer(r"(?<=https://twitter.com/)(\w+/status/\w+)", content): 
+            #     await handleTwitterVideo(message, match.group(1))
 
     except Exception:
         logging.exception("Exception occurred", exc_info=True)
