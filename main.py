@@ -215,19 +215,12 @@ async def handlePixivUrl(message, submission_id):
             data = await response.json()
             session.headers.update({"Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"})
 
-        # Skip safe work
-        if data['illust']['x_restrict'] == 0:
-            return 
-
         if data['illust']['x_restrict'] == 2:
             await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
             await message.delete()
             return
 
         async with message.channel.typing():
-            # Prepare the embed object
-            embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
-
             if data['illust']['type'] == 'ugoira':
                 busy_message = await message.channel.send("Oh hey, that's an animated one, it will take me a while!")
 
@@ -265,8 +258,11 @@ async def handlePixivUrl(message, submission_id):
                     )
 
                     # Prepare attachment file
-                    file = discord.File(f"{tmpdir}/{submission_id}.{ext}", filename=f"{submission_id}.{ext}")
+                    embeds, files = [], []
+                    embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
+                    files.append(discord.File(f"{tmpdir}/{submission_id}.{ext}", filename=f"{submission_id}.{ext}"))
                     embed.set_image(url=f"attachment://{submission_id}.{ext}")
+                    embeds.append(embed)
 
                     # Do not embed videos, only embed gifs
                     if ext == 'mp4':
@@ -277,15 +273,22 @@ async def handlePixivUrl(message, submission_id):
 
             else:
                 if data['illust']['meta_single_page']:
-                    url = data['illust']['meta_single_page']['original_image_url']
+                    urls = data['illust']['meta_single_page']['original_image_url']
                 else:
-                    url = data['illust']['meta_pages'][0]['image_urls']['original']
-                ext = os.path.splitext(url)[1]
-                async with session.get(url) as response:
-                    file = discord.File(io.BytesIO(await response.read()), filename=f"{submission_id}.{ext}")
-                    embed.set_image(url=f"attachment://{submission_id}.{ext}")
+                    urls = [ url['image_urls']['original'] for url in data['illust']['meta_pages'] ] 
+                
+                embeds, files = [], []
+                for index, url in enumerate(urls):
+                    # Prepare the embed object
+                    embed = discord.Embed(title=f"{data['illust']['title']} {index + 1}/{len(urls)} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
 
-    await message.channel.send(embed=embed, file=file)
+                    ext = os.path.splitext(url)[1]
+                    async with session.get(url) as response:
+                        files.append(discord.File(io.BytesIO(await response.read()), filename=f"{submission_id}_{index}.{ext}"))
+                        embed.set_image(url=f"attachment://{submission_id}_{index}.{ext}")
+                        embeds.append(embed)
+
+    await message.channel.send(embeds=embeds, files=files)
 
 async def handleInkbunnyUrl(message, submission_id):
     async with aiohttp.ClientSession() as session:
@@ -461,7 +464,7 @@ async def on_message(message):
                 # Parse short url with HTTP HEAD + redirects
                 async with aiohttp.ClientSession() as session:
                     session.headers.update({
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36'
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36'
                     })
                     async with session.head(short_url, allow_redirects=True) as r:
                         url = str(r.url).split('?')[0] # remove all the junk in query data
@@ -509,9 +512,8 @@ async def on_message(message):
             for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", content):
                 await handleBaraagContent(message, match.group(1))    
 
-            # Disabled, discord/twitter fixed embeds
-            # for match in re.finditer(r"(?<=https://twitter.com/)(\w+/status/\w+)", content): 
-            #     await handleTwitterVideo(message, match.group(1))
+            for match in re.finditer(r"(?<=https://twitter.com/)(\w+/status/\w+)", content): 
+                await handleTwitterVideo(message, match.group(1))
 
     except Exception:
         logging.exception("Exception occurred", exc_info=True)
