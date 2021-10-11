@@ -28,6 +28,7 @@ from TikTokApi import TikTokApi
 from dateutil import tz
 from discord.ext import commands
 from html.parser import HTMLParser
+from pprint import pprint
 from saucenao_api import SauceNao
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
@@ -438,6 +439,20 @@ async def handleTwitterVideo(message, submission_id):
                     file = discord.File(f, filename=filename)
                 await message.channel.send(file=file)
 
+# Parser regular expressions list
+handlers = [
+    { 'pattern': re.compile(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)"), 'function': handlePixivUrl },
+    { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)"), 'function': handleInkbunnyUrl },
+    { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handleFuraffinityUrl },
+    { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handleE621Url},
+    { 'pattern': re.compile(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handleRule34xxxUrl }, # TODO: better regex?
+    { 'pattern': re.compile(r"(?<=https://pawoo.net/web/statuses/)(\w+)"), 'function': handlePawooContent},
+    { 'pattern': re.compile(r"(?<=https://pawoo.net/)@\w+/(\w+)"), 'function': handlePawooContent},
+    { 'pattern': re.compile(r"(?<=https://baraag.net/web/statuses/)(\w+)"), 'function': handleBaraagContent},
+    { 'pattern': re.compile(r"(?<=https://baraag.net/)@\w+/(\w+)"), 'function': handleBaraagContent},
+    { 'pattern': re.compile(r"(?<=https://twitter.com/)(\w+/status/\w+)"), 'function': handleTwitterVideo}
+]
+
 # Events 
 @bot.event
 async def on_ready():
@@ -485,37 +500,13 @@ async def on_message(message):
                 await provideSources(message)
                 return 
 
-            for match in re.finditer(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)", content):
-                await handlePixivUrl(message, match.group(1))
+            # Match and run all supported handers
+            for handler in handlers:
+                for match in re.finditer(handler['pattern'], acontent):
+                    await handler['function'](message, match.group(1))
 
-            for match in re.finditer(r"(?<=https://inkbunny.net/s/)(\w+)", content):
-                await handleInkbunnyUrl(message, match.group(1))
-
-            for match in re.finditer(r"(?<=https://www.furaffinity.net/view/)(\w+)", content):
-                await handleFuraffinityUrl(message, match.group(1))
-
-            for match in re.finditer(r"(?<=https://e621.net/posts/)(\w+)", content):
-                await handleE621Url(message, match.group(1))
-
-            for match in re.finditer(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)", content): # TODO: better regex?
-                await handleRule34xxxUrl(message, match.group(1))
-
-            for match in re.finditer(r"(?<=https://pawoo.net/web/statuses/)(\w+)", content):
-                await handlePawooContent(message, match.group(1))
-
-            for match in re.finditer(r"(?<=https://pawoo.net/)@\w+/(\w+)", content):
-                await handlePawooContent(message, match.group(1))
-
-            for match in re.finditer(r"(?<=https://baraag.net/web/statuses/)(\w+)", content):
-                await handleBaraagContent(message, match.group(1))
-
-            for match in re.finditer(r"(?<=https://baraag.net/)@\w+/(\w+)", content):
-                await handleBaraagContent(message, match.group(1))    
-
-            for match in re.finditer(r"(?<=https://twitter.com/)(\w+/status/\w+)", content): 
-                await handleTwitterVideo(message, match.group(1))
-
-    except Exception:
+    except Exception as e:
+        pprint(e)
         logging.exception("Exception occurred", exc_info=True)
 
 @bot.event
