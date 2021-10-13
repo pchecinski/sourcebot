@@ -502,7 +502,7 @@ async def on_message(message):
 
             # Match and run all supported handers
             for handler in handlers:
-                for match in re.finditer(handler['pattern'], acontent):
+                for match in re.finditer(handler['pattern'], content):
                     await handler['function'](message, match.group(1))
 
     except Exception as e:
