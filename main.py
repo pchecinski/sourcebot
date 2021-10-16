@@ -230,24 +230,24 @@ async def handlePixivUrl(message, submission_id):
                     url = f"{BASE_URL}/v1/ugoira/metadata",
                     params = { "illust_id": submission_id },
                 ) as response:
-                    data = await response.json()
+                    metadata = await response.json()
 
                 # Download and extract zip archive to temporary directory
                 with TemporaryDirectory() as tmpdir:
-                    async with session.get(data['ugoira_metadata']['zip_urls']['medium']) as response:
+                    async with session.get(metadata['ugoira_metadata']['zip_urls']['medium']) as response:
                         with ZipFile(io.BytesIO(await response.read()), 'r') as zip_ref: 
                             zip_ref.extractall(tmpdir)
 
                     # Prepare ffmpeg "concat demuxer" file
                     with open(f"{tmpdir}/ffconcat.txt", 'w') as f:
-                        for frame in data['ugoira_metadata']['frames']:
+                        for frame in metadata['ugoira_metadata']['frames']:
                             frame_file = frame['file']
                             frame_duration = round(frame['delay'] / 1000, 4)
 
                             f.write(f"file {frame_file}\nduration {frame_duration}\n")
-                        f.write(f"file {data['ugoira_metadata']['frames'][-1]['file']}")
+                        f.write(f"file {metadata['ugoira_metadata']['frames'][-1]['file']}")
 
-                    if len(data['ugoira_metadata']['frames']) > 60:
+                    if len(metadata['ugoira_metadata']['frames']) > 60:
                         ext, ext_params = "mp4", ""
                     else:
                         ext, ext_params = "gif", "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
@@ -263,11 +263,10 @@ async def handlePixivUrl(message, submission_id):
                     embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
                     files.append(discord.File(f"{tmpdir}/{submission_id}.{ext}", filename=f"{submission_id}.{ext}"))
                     embed.set_image(url=f"attachment://{submission_id}.{ext}")
-                    embeds.append(embed)
 
                     # Do not embed videos, only embed gifs
-                    if ext == 'mp4':
-                        embed = None
+                    if ext != 'mp4':
+                        embeds.append(embed)
 
                 # Delete information about dealing with longer upload
                 await busy_message.delete()
