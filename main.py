@@ -273,7 +273,7 @@ async def handlePixivUrl(message, submission_id):
 
             else:
                 if data['illust']['meta_single_page']:
-                    urls = data['illust']['meta_single_page']['original_image_url']
+                    urls = [ data['illust']['meta_single_page']['original_image_url'] ]
                 else:
                     urls = [ url['image_urls']['original'] for url in data['illust']['meta_pages'] ] 
                 
