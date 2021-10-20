@@ -395,7 +395,7 @@ async def handleBaraagContent(message, submission_id):
         embed.set_image(url=data['media_attachments'][0]['url'])
     await message.channel.send(embed=embed)
 
-async def handleTwitterVideo(message, submission_id):
+async def handleTwitterContent(message, submission_id):
     # Tweet ID from URL
     tweet_id = submission_id.split('/')[-1]
     async with aiohttp.ClientSession() as session:
@@ -430,7 +430,7 @@ async def handleTwitterVideo(message, submission_id):
 
             if os.stat(f"{tmpdir}/{filename}").st_size / 1048576 > 8:
                 os.rename(f"{tmpdir}/{filename}", f"/home/discordbot/media/{filename}")
-                print(f"/home/discordbot/media/{filename}")
+                await message.channel.send(f"https://static.storky.dev/{filename}")
                 return
 
             async with message.channel.typing(): 
@@ -445,11 +445,12 @@ handlers = [
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handleFuraffinityUrl },
     { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handleE621Url},
     { 'pattern': re.compile(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handleRule34xxxUrl }, # TODO: better regex?
-    { 'pattern': re.compile(r"(?<=https://pawoo.net/web/statuses/)(\w+)"), 'function': handlePawooContent},
-    { 'pattern': re.compile(r"(?<=https://pawoo.net/)@\w+/(\w+)"), 'function': handlePawooContent},
-    { 'pattern': re.compile(r"(?<=https://baraag.net/web/statuses/)(\w+)"), 'function': handleBaraagContent},
-    { 'pattern': re.compile(r"(?<=https://baraag.net/)@\w+/(\w+)"), 'function': handleBaraagContent},
-    { 'pattern': re.compile(r"(?<=https://twitter.com/)(\w+/status/\w+)"), 'function': handleTwitterVideo}
+    { 'pattern': re.compile(r"(?<=https://pawoo.net/web/statuses/)(\w+)"), 'function': handlePawooContent },
+    { 'pattern': re.compile(r"(?<=https://pawoo.net/)@\w+/(\w+)"), 'function': handlePawooContent },
+    { 'pattern': re.compile(r"(?<=https://baraag.net/web/statuses/)(\w+)"), 'function': handleBaraagContent },
+    { 'pattern': re.compile(r"(?<=https://baraag.net/)@\w+/(\w+)"), 'function': handleBaraagContent },
+    { 'pattern': re.compile(r"(?<=https://twitter.com/)(\w+/status/\w+)"), 'function': handleTwitterContent },
+    { 'pattern': re.compile(r"(?<=https://fxtwitter.com/)(\w+/status/\w+)"), 'function': handleTwitterContent },
 ]
 
 # Events 
