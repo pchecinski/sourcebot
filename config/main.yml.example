@@ -4,9 +4,6 @@ discord:
   art_channels: # Channels ids where source providing should work
     - 123456789012345678
     - 234567890123456789 
-  tiktok_channels: # Channels ids where tiktok videos should be downloaded and posted
-    - 123456789012345678
-    - 234567890123456789 
 
 # Credentials to websites/api tokens   
 e621:

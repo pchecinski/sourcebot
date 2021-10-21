@@ -56,6 +56,7 @@ def tiktok_worker():
     while True:
         # Get a task from queue
         message, url = tiktok_queue.get()
+        tiktok_id = url.split('/')[-1]
 
         api = TikTokApi.get_instance(custom_did="".join(random.choices(string.digits, k=19)))
         try:
@@ -83,9 +84,12 @@ def tiktok_worker():
         elif size == 0:
             coro = message.add_reaction('<:botempty:854665168888528896>')
         elif size > 8.0:
-            coro = message.add_reaction('<:botlarge:854665168831381504>')
+            with open(f"/home/discordbot/media/tiktok-{tiktok_id}.mp4", 'wb') as f:
+                f.write(data)
+            coro = message.channel.send(f"https://static.storky.dev/tiktok-{tiktok_id}.mp4")
+
         else:
-            coro = message.channel.send(file=discord.File(io.BytesIO(data), filename='tiktok-video.mp4')) 
+            coro = message.channel.send(file=discord.File(io.BytesIO(data), filename=f"tiktok-{tiktok_id}.mp4")) 
 
         # Run async task on the bot thread
         task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
@@ -453,6 +457,11 @@ handlers = [
     { 'pattern': re.compile(r"(?<=https://fxtwitter.com/)(\w+/status/\w+)"), 'function': handleTwitterContent },
 ]
 
+tiktok_patterns = {
+    'short': re.compile(r"(?<=https://vm.tiktok.com/)(\w+)"),
+    'long': re.compile(r"(?<=https://www.tiktok.com/)(@\w+\/video\/\w+)")
+}
+
 # Events 
 @bot.event
 async def on_ready():
@@ -471,28 +480,27 @@ async def on_message(message):
         content = re.sub(spoiler_regex, '', message.content)
 
         # Post tiktok videos
-        if message.channel.id in config['discord']['tiktok_channels'] or isinstance(message.channel, discord.DMChannel):
+        for match in re.finditer(tiktok_patterns['short'], content):
             # Support for short url (mobile links)
-            for match in re.finditer(r"(?<=https://vm.tiktok.com/)(\w+)", content):
-                short_url = 'https://vm.tiktok.com/' + match.group(1)
+            short_url = 'https://vm.tiktok.com/' + match.group(1)
 
-                # Parse short url with HTTP HEAD + redirects
-                async with aiohttp.ClientSession() as session:
-                    session.headers.update({
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36'
-                    })
-                    async with session.head(short_url, allow_redirects=True) as r:
-                        url = str(r.url).split('?')[0] # remove all the junk in query data
+            # Parse short url with HTTP HEAD + redirects
+            async with aiohttp.ClientSession() as session:
+                session.headers.update({
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36'
+                })
+                async with session.head(short_url, allow_redirects=True) as r:
+                    url = str(r.url).split('?')[0] # remove all the junk in query data
 
-                # Add task to tiktok queue
-                tiktok_queue.put((message, url))
+            # Add task to tiktok queue
+            tiktok_queue.put((message, url))
 
+        for match in re.finditer(tiktok_patterns['long'], content):
             # Support for long url (browser links)
-            for match in re.finditer(r"(?<=https://www.tiktok.com/)(@\w+\/video\/\w+)", content):
-                url = 'https://www.tiktok.com/' + match.group(1)
+            url = 'https://www.tiktok.com/' + match.group(1)
 
-                # Add task to tiktok queue
-                tiktok_queue.put((message, url))
+            # Add task to tiktok queue
+            tiktok_queue.put((message, url))
 
         # Source providing service handlers
         if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
