@@ -305,16 +305,17 @@ async def handleInkbunnyUrl(message, submission_id):
         async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={submission_id}") as r:
             data = await r.json()
 
-    if len(data['submissions']) != 1:
-        return
-
-    # Get image url and send it
+    # Get submission data
     submission = data['submissions'][0]
 
+    # Parse and embed all files
     async with message.channel.typing():
-        embed = discord.Embed(title=f"{submission['title']} by {submission['username']}", color=discord.Color(0xFCE4F1))
-        embed.set_image(url=submission['file_url_full'])
-    await message.channel.send(embed=embed)
+        embeds = []
+        for index, file in enumerate(submission['files']):
+            embed = discord.Embed(title=f"{submission['title']} {index + 1}/{len(submission['files'])} by {submission['username']}", color=discord.Color(0xFCE4F1))
+            embed.set_image(url=file['file_url_screen'])
+            embeds.append(embed)
+    await message.channel.send(embeds=embeds)
 
 async def handleE621Url(message, submission_id):
     async with aiohttp.ClientSession() as session:
