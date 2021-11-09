@@ -5,6 +5,10 @@ discord:
     - 123456789012345678
     - 234567890123456789 
 
+media:
+  path: "/path/to/media"
+  url: "https://example.com"
+
 # Credentials to websites/api tokens   
 e621:
   username: "-"

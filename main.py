@@ -84,9 +84,9 @@ def tiktok_worker():
         elif size == 0:
             coro = message.add_reaction('<:botempty:854665168888528896>')
         elif size > 8.0:
-            with open(f"/home/discordbot/media/tiktok-{tiktok_id}.mp4", 'wb') as f:
+            with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as f:
                 f.write(data)
-            coro = message.channel.send(f"https://static.storky.dev/tiktok-{tiktok_id}.mp4")
+            coro = message.channel.send(f"{config['media']['url']}/tiktok-{tiktok_id}.mp4")
 
         else:
             coro = message.channel.send(file=discord.File(io.BytesIO(data), filename=f"tiktok-{tiktok_id}.mp4")) 
@@ -259,13 +259,13 @@ async def handlePixivUrl(message, submission_id):
                     embeds, files = [], []
                     embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
                     if os.stat(f"{tmpdir}/{submission_id}.gif").st_size / 1048576 > 8:
-                        os.rename(f"{tmpdir}/{submission_id}.gif", f"/home/discordbot/media/pixiv-{submission_id}.gif")
-                        embed.set_image(url=f"https://static.storky.dev/pixiv-{submission_id}.gif")
+                        os.rename(f"{tmpdir}/{submission_id}.gif", f"{config['media']['path']}/pixiv-{submission_id}.gif")
+                        embed.set_image(url=f"{config['media']['url']}/pixiv-{submission_id}.gif")
                     else:
                         files.append(discord.File(f"{tmpdir}/{submission_id}.gif", filename=f"{submission_id}.gif"))
                         embed.set_image(url=f"attachment://{submission_id}.gif")
                     embeds.append(embed)
-                    
+
                 # Delete information about dealing with longer upload
                 await busy_message.delete()
 
@@ -428,8 +428,8 @@ async def handleTwitterContent(message, submission_id):
                 filename = f"{tweet_id}.gif"
 
             if os.stat(f"{tmpdir}/{filename}").st_size / 1048576 > 8:
-                os.rename(f"{tmpdir}/{filename}", f"/home/discordbot/media/{filename}")
-                await message.channel.send(f"https://static.storky.dev/{filename}")
+                os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/tweet-{filename}")
+                await message.channel.send(f"{config['media']['url']}/tweet-{filename}")
                 return
 
             async with message.channel.typing(): 
