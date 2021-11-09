@@ -247,31 +247,25 @@ async def handlePixivUrl(message, submission_id):
                         for frame in metadata['ugoira_metadata']['frames']:
                             frame_file = frame['file']
                             frame_duration = round(frame['delay'] / 1000, 4)
-
                             f.write(f"file {frame_file}\nduration {frame_duration}\n")
-                        f.write(f"file {metadata['ugoira_metadata']['frames'][-1]['file']}")
-
-                    if len(metadata['ugoira_metadata']['frames']) > 60:
-                        ext, ext_params = "mp4", ""
-                    else:
-                        ext, ext_params = "gif", "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
 
                     # Run ffmpeg for the given file/directory
                     subprocess.call(
-                        shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt {ext_params} {submission_id}.{ext}"),
+                        shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt -vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 {submission_id}.gif"),
                         cwd=os.path.abspath(tmpdir)
                     )
 
                     # Prepare attachment file
                     embeds, files = [], []
                     embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
-                    files.append(discord.File(f"{tmpdir}/{submission_id}.{ext}", filename=f"{submission_id}.{ext}"))
-                    embed.set_image(url=f"attachment://{submission_id}.{ext}")
-
-                    # Do not embed videos, only embed gifs
-                    if ext != 'mp4':
-                        embeds.append(embed)
-
+                    if os.stat(f"{tmpdir}/{submission_id}.gif").st_size / 1048576 > 8:
+                        os.rename(f"{tmpdir}/{submission_id}.gif", f"/home/discordbot/media/pixiv-{submission_id}.gif")
+                        embed.set_image(url=f"https://static.storky.dev/pixiv-{submission_id}.gif")
+                    else:
+                        files.append(discord.File(f"{tmpdir}/{submission_id}.gif", filename=f"{submission_id}.gif"))
+                        embed.set_image(url=f"attachment://{submission_id}.gif")
+                    embeds.append(embed)
+                    
                 # Delete information about dealing with longer upload
                 await busy_message.delete()
 
