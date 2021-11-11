@@ -1,37 +1,35 @@
 #!/home/discordbot/sourcebot-env/bin/python3.8
 # -*- coding: utf-8 -*-
 
-import aiohttp
+# Python standard libraries
 import asyncio
 import datetime
-import discord
-import faapi
 import hashlib
 import io
-import json
 import logging
-import magic
 import os
 import queue
 import random
 import re
-import requests
 import shlex
 import string
 import subprocess
 import threading
+from pprint import pprint
+from tempfile import TemporaryDirectory
+from zipfile import ZipFile
+
+# Third-party libraries
+import discord
+import faapi
+import magic
 import xmltodict
 import yaml
 import youtube_dl
-
+from aiohttp import ClientSession, BasicAuth
 from TikTokApi import TikTokApi
-from dateutil import tz
 from discord.ext import commands
-from html.parser import HTMLParser
-from pprint import pprint
 from saucenao_api import SauceNao
-from tempfile import TemporaryDirectory
-from zipfile import ZipFile
 
 MAIN_CONFIG = "config/main.yml"
 ROLES_SETTINGS = "config/roles.yml"
@@ -62,7 +60,8 @@ def tiktok_worker():
         try:
             data = api.get_video_by_url(url)
         except Exception:
-            logging.exception("TIKTOK THREAD: Exception occurred", exc_info=True) # api.clean_up() # TODO: possible fix for some errors
+            # api.clean_up() # TODO: possible fix for some errors
+            logging.exception("TIKTOK THREAD: Exception occurred", exc_info=True)
 
             coro = message.add_reaction('<:boterror:854665168889184256>')
             task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
@@ -75,21 +74,21 @@ def tiktok_worker():
         mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
 
         # Log tiktok urls to tiktok.log
-        with open('logs/tiktok.log', 'a') as f:
+        with open('logs/tiktok.log', 'a') as file:
             location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-            f.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{url}, size: {size:.2f} MB, mime: {mime}\n")
+            file.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{url}, size: {size:.2f} MB, mime: {mime}\n")
 
         if mime != 'video/mp4':
             coro = message.add_reaction('<:boterror:854665168889184256>')
         elif size == 0:
             coro = message.add_reaction('<:botempty:854665168888528896>')
         elif size > 8.0:
-            with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as f:
-                f.write(data)
+            with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
+                file.write(data)
             coro = message.channel.send(f"{config['media']['url']}/tiktok-{tiktok_id}.mp4")
 
         else:
-            coro = message.channel.send(file=discord.File(io.BytesIO(data), filename=f"tiktok-{tiktok_id}.mp4")) 
+            coro = message.channel.send(file=discord.File(io.BytesIO(data), filename=f"tiktok-{tiktok_id}.mp4"))
 
         # Run async task on the bot thread
         task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
@@ -140,7 +139,7 @@ async def handle_reaction(payload):
         await member.remove_roles(role, reason='emoji_role_remove')
 
 # Sourcenao
-async def provideSources(message): 
+async def provide_sources(message):
     sauce = SauceNao(config['saucenao']['token'])
     sources = []
 
@@ -155,49 +154,41 @@ async def provideSources(message):
 
         try:
             sources.append(f"<{results[0].urls[0]}>")
-            
+
             # Log source to sources.log
-            with open('logs/sources.log', 'a') as f:
+            with open('logs/sources.log', 'a') as file:
                 location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-                f.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
+                file.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
 
         except Exception:
-            from pprint import pprint
             pprint(f"{attachment.url}, {results}")
             logging.exception("Exception occurred (source provider)", exc_info=True)
-    
+
     if len(sources) == 0:
         return
-    
+
     source_urls = '\n'.join(sources)
     await message.reply(f"Source(s):\n{source_urls}")
 
 # Source fetching
-async def handlePixivUrl(message, submission_id):
+async def handle_pixiv_url(message, submission_id):
     # Static data for pixiv
-    AUTH_URL = "https://oauth.secure.pixiv.net/auth/token"
-    BASE_URL = "https://app-api.pixiv.net"
-
-    CLIENT_ID = "KzEZED7aC0vird8jWyHM38mXjNTY"
-    CLIENT_SECRET = "W9JZoJe00qPvJsiyCGT3CCtC6ZUtdpKpzMbNlUGP"
-    LOGIN_SECRET = "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c"
-
-    HEADERS = {
-        "User-Agent": "PixivAndroidApp/5.0.115 (Android 6.0; PixivBot)",
-        "Accept-Language": "English"
-    }
+    base_url = "https://app-api.pixiv.net"
 
     # Prepare Access Token
-    async with aiohttp.ClientSession() as session:
-        session.headers.update(HEADERS)
+    async with ClientSession() as session:
+        session.headers.update({
+        "User-Agent": "PixivAndroidApp/5.0.115 (Android 6.0; PixivBot)",
+        "Accept-Language": "English"
+        })
         client_time = datetime.datetime.utcnow().replace(microsecond=0).replace(tzinfo=datetime.timezone.utc).isoformat()
 
         # Authenticate using Refresh token
         async with session.post(
-            url = AUTH_URL,
+            url = "https://oauth.secure.pixiv.net/auth/token",
             data = {
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
+                "client_id": "KzEZED7aC0vird8jWyHM38mXjNTY",
+                "client_secret": "W9JZoJe00qPvJsiyCGT3CCtC6ZUtdpKpzMbNlUGP",
                 "get_secure_url": 1,
                 "grant_type": "refresh_token",
                 "refresh_token": config['pixiv']['token']
@@ -205,7 +196,7 @@ async def handlePixivUrl(message, submission_id):
             headers = {
                 "X-Client-Time": client_time,
                 "X-Client-Hash": hashlib.md5(
-                    (client_time + LOGIN_SECRET).encode("utf-8")
+                    (client_time + "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c").encode("utf-8")
                 ).hexdigest()
             },
         ) as response:
@@ -214,16 +205,13 @@ async def handlePixivUrl(message, submission_id):
 
         # Get Illustration details
         async with session.get(
-            url = f"{BASE_URL}/v1/illust/detail",
+            url = f"{base_url}/v1/illust/detail",
             params = { "illust_id": submission_id },
         ) as response:
             data = await response.json()
-            session.headers.update({"Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"})
-
-        if data['illust']['x_restrict'] == 2:
-            await message.reply("Please don't post this kind of art on this server. (R-18G)", mention_author=True)
-            await message.delete()
-            return
+            session.headers.update({
+                "Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"
+            })
 
         async with message.channel.typing():
             if data['illust']['type'] == 'ugoira':
@@ -231,7 +219,7 @@ async def handlePixivUrl(message, submission_id):
 
                 # Get file metadata (framges and zip_url)
                 async with session.get(
-                    url = f"{BASE_URL}/v1/ugoira/metadata",
+                    url = f"{base_url}/v1/ugoira/metadata",
                     params = { "illust_id": submission_id },
                 ) as response:
                     metadata = await response.json()
@@ -239,15 +227,15 @@ async def handlePixivUrl(message, submission_id):
                 # Download and extract zip archive to temporary directory
                 with TemporaryDirectory() as tmpdir:
                     async with session.get(metadata['ugoira_metadata']['zip_urls']['medium']) as response:
-                        with ZipFile(io.BytesIO(await response.read()), 'r') as zip_ref: 
+                        with ZipFile(io.BytesIO(await response.read()), 'r') as zip_ref:
                             zip_ref.extractall(tmpdir)
 
                     # Prepare ffmpeg "concat demuxer" file
-                    with open(f"{tmpdir}/ffconcat.txt", 'w') as f:
+                    with open(f"{tmpdir}/ffconcat.txt", 'w') as file:
                         for frame in metadata['ugoira_metadata']['frames']:
                             frame_file = frame['file']
                             frame_duration = round(frame['delay'] / 1000, 4)
-                            f.write(f"file {frame_file}\nduration {frame_duration}\n")
+                            file.write(f"file {frame_file}\nduration {frame_duration}\n")
 
                     # Run ffmpeg for the given file/directory
                     subprocess.call(
@@ -273,8 +261,8 @@ async def handlePixivUrl(message, submission_id):
                 if data['illust']['meta_single_page']:
                     urls = [ data['illust']['meta_single_page']['original_image_url'] ]
                 else:
-                    urls = [ url['image_urls']['original'] for url in data['illust']['meta_pages'] ] 
-                
+                    urls = [ url['image_urls']['original'] for url in data['illust']['meta_pages'] ]
+
                 embeds, files = [], []
                 for index, url in enumerate(urls):
                     # Prepare the embed object
@@ -288,16 +276,16 @@ async def handlePixivUrl(message, submission_id):
 
     await message.channel.send(embeds=embeds, files=files)
 
-async def handleInkbunnyUrl(message, submission_id):
-    async with aiohttp.ClientSession() as session:
+async def handle_inkbunny_url(message, submission_id):
+    async with ClientSession() as session:
         # Log in to API and get session ID
-        async with session.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}") as r:
-            data = await r.json()
+        async with session.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}") as response:
+            data = await response.json()
             session_id = data['sid']
 
         # Request information about the submission
-        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={submission_id}") as r:
-            data = await r.json()
+        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={submission_id}") as response:
+            data = await response.json()
 
     # Get submission data
     submission = data['submissions'][0]
@@ -311,15 +299,15 @@ async def handleInkbunnyUrl(message, submission_id):
             embeds.append(embed)
     await message.channel.send(embeds=embeds)
 
-async def handleE621Url(message, submission_id):
-    async with aiohttp.ClientSession() as session:
+async def handle_e621_url(message, submission_id):
+    async with ClientSession() as session:
         session.headers.update({
             'User-Agent': f"{bot.user.name} by {config['e621']['username']}"
         })
 
         # Get image data using API Endpoint
-        async with session.get(f"https://e621.net/posts/{submission_id}.json", auth=aiohttp.BasicAuth(config['e621']['username'], config['e621']['api_key'])) as r:
-            data = await r.json()
+        async with session.get(f"https://e621.net/posts/{submission_id}.json", auth=BasicAuth(config['e621']['username'], config['e621']['api_key'])) as response:
+            data = await response.json()
             post = data['post']
 
             # Check for global blacklist (ignore other links as they already come with previews)
@@ -331,7 +319,7 @@ async def handleE621Url(message, submission_id):
         embed.set_image(url=post['sample']['url'])
     await message.channel.send(embed=embed)
 
-async def handleFuraffinityUrl(message, submission_id):
+async def handle_furaffinity_url(message, submission_id):
     cookies = [
         {"name": "a", "value": config['furaffinity']['cookie']['a']},
         {"name": "b", "value": config['furaffinity']['cookie']['b']},
@@ -348,20 +336,20 @@ async def handleFuraffinityUrl(message, submission_id):
         embed.set_image(url=submission.file_url)
     await message.channel.send(embed=embed)
 
-async def handleRule34xxxUrl(message, submission_id):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}") as r:
-            data = xmltodict.parse(await r.text())
+async def handle_rule34xxx_url(message, submission_id):
+    async with ClientSession() as session:
+        async with session.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}") as response:
+            data = xmltodict.parse(await response.text())
 
-    async with message.channel.typing(): 
+    async with message.channel.typing():
         embed = discord.Embed(color=discord.Color(0xABE5A4)) # TODO: Title? Maybe try to use source from the webiste if provided for other handers?
         embed.set_image(url=data['posts']['post']['@file_url'])
     await message.channel.send(embed=embed)
 
-async def handlePawooContent(message, submission_id):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://pawoo.net/api/v1/statuses/{submission_id}") as r:
-            data = await r.json()
+async def handle_pawoo_content(message, submission_id):
+    async with ClientSession() as session:
+        async with session.get(f"https://pawoo.net/api/v1/statuses/{submission_id}") as response:
+            data = await response.json()
 
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
@@ -371,15 +359,15 @@ async def handlePawooContent(message, submission_id):
     if 'pawoo.net' in data['account']['url'] or 'artalley.social' in data['account']['url']:
         return
 
-    async with message.channel.typing(): 
+    async with message.channel.typing():
         embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
         embed.set_image(url=data['media_attachments'][0]['url'])
     await message.channel.send(embed=embed)
 
-async def handleBaraagContent(message, submission_id):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://baraag.net/api/v1/statuses/{submission_id}") as r:
-            data = await r.json()
+async def handle_baraag_content(message, submission_id):
+    async with ClientSession() as session:
+        async with session.get(f"https://baraag.net/api/v1/statuses/{submission_id}") as response:
+            data = await response.json()
 
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
@@ -389,22 +377,22 @@ async def handleBaraagContent(message, submission_id):
     if 'baraag.net' in data['account']['url'] or 'artalley.social' in data['account']['url']:
         return
 
-    async with message.channel.typing(): 
+    async with message.channel.typing():
         embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
         embed.set_image(url=data['media_attachments'][0]['url'])
     await message.channel.send(embed=embed)
 
-async def handleTwitterContent(message, submission_id):
+async def handle_twitter_content(message, submission_id):
     # Tweet ID from URL
     tweet_id = submission_id.split('/')[-1]
-    async with aiohttp.ClientSession() as session:
+    async with ClientSession() as session:
         session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
 
         async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys&media.fields=type") as response:
-            tweet_data = await response.json() 
+            tweet_data = await response.json()
 
             if 'includes' not in tweet_data:
-                return 
+                return
 
             if tweet_data['includes']['media'][0]['type'] != 'video' and tweet_data['includes']['media'][0]['type'] != 'animated_gif':
                 return
@@ -415,9 +403,9 @@ async def handleTwitterContent(message, submission_id):
             try:
                 meta = ydl.extract_info(f"https://twitter.com/{submission_id}")
                 filename = f"{tweet_id}.{meta['ext']}"
-            except:
+            except Exception:
                 print(f"{tweet_id}: ytdl exception, that shouldn't happen..")
-                return 
+                return
 
             # Convert Animated GIFs to .gif so they loop in Discord
             if tweet_data['includes']['media'][0]['type'] == 'animated_gif':
@@ -432,24 +420,23 @@ async def handleTwitterContent(message, submission_id):
                 await message.channel.send(f"{config['media']['url']}/tweet-{filename}")
                 return
 
-            async with message.channel.typing(): 
-                with open(f"{tmpdir}/{filename}", 'rb') as f:
-                    file = discord.File(f, filename=filename)
-                await message.channel.send(file=file)
+            async with message.channel.typing():
+                with open(f"{tmpdir}/{filename}", 'rb') as file:
+                    await message.channel.send(file=discord.File(file, filename=filename))
 
 # Parser regular expressions list
 handlers = [
-    { 'pattern': re.compile(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)"), 'function': handlePixivUrl },
-    { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)"), 'function': handleInkbunnyUrl },
-    { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handleFuraffinityUrl },
-    { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handleE621Url},
-    { 'pattern': re.compile(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handleRule34xxxUrl }, # TODO: better regex?
-    { 'pattern': re.compile(r"(?<=https://pawoo.net/web/statuses/)(\w+)"), 'function': handlePawooContent },
-    { 'pattern': re.compile(r"(?<=https://pawoo.net/)@\w+/(\w+)"), 'function': handlePawooContent },
-    { 'pattern': re.compile(r"(?<=https://baraag.net/web/statuses/)(\w+)"), 'function': handleBaraagContent },
-    { 'pattern': re.compile(r"(?<=https://baraag.net/)@\w+/(\w+)"), 'function': handleBaraagContent },
-    { 'pattern': re.compile(r"(?<=https://twitter.com/)(\w+/status/\w+)"), 'function': handleTwitterContent },
-    { 'pattern': re.compile(r"(?<=https://fxtwitter.com/)(\w+/status/\w+)"), 'function': handleTwitterContent },
+    { 'pattern': re.compile(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)"), 'function': handle_pixiv_url },
+    { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)"), 'function': handle_inkbunny_url },
+    { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handle_furaffinity_url },
+    { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handle_e621_url},
+    { 'pattern': re.compile(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handle_rule34xxx_url }, # TODO: better regex?
+    { 'pattern': re.compile(r"(?<=https://pawoo.net/web/statuses/)(\w+)"), 'function': handle_pawoo_content },
+    { 'pattern': re.compile(r"(?<=https://pawoo.net/)@\w+/(\w+)"), 'function': handle_pawoo_content },
+    { 'pattern': re.compile(r"(?<=https://baraag.net/web/statuses/)(\w+)"), 'function': handle_baraag_content },
+    { 'pattern': re.compile(r"(?<=https://baraag.net/)@\w+/(\w+)"), 'function': handle_baraag_content },
+    { 'pattern': re.compile(r"(?<=https://twitter.com/)(\w+/status/\w+)"), 'function': handle_twitter_content },
+    { 'pattern': re.compile(r"(?<=https://fxtwitter.com/)(\w+/status/\w+)"), 'function': handle_twitter_content },
 ]
 
 tiktok_patterns = {
@@ -457,12 +444,12 @@ tiktok_patterns = {
     'long': re.compile(r"(?<=https://www.tiktok.com/)(@\w+\/video\/\w+)")
 }
 
-# Events 
+# Events
 @bot.event
 async def on_ready():
     print(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}]: The great and only {bot.user.name} has connected to Discord API!")
 
-@bot.event 
+@bot.event
 async def on_message(message):
     try:
         if message.author == bot.user:
@@ -480,12 +467,12 @@ async def on_message(message):
             short_url = 'https://vm.tiktok.com/' + match.group(1)
 
             # Parse short url with HTTP HEAD + redirects
-            async with aiohttp.ClientSession() as session:
+            async with ClientSession() as session:
                 session.headers.update({
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36'
                 })
-                async with session.head(short_url, allow_redirects=True) as r:
-                    url = str(r.url).split('?')[0] # remove all the junk in query data
+                async with session.head(short_url, allow_redirects=True) as response:
+                    url = str(response.url).split('?')[0] # remove all the junk in query data
 
             # Add task to tiktok queue
             tiktok_queue.put((message, url))
@@ -500,16 +487,16 @@ async def on_message(message):
         # Source providing service handlers
         if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
             if len(message.attachments) > 0:
-                await provideSources(message)
-                return 
+                await provide_sources(message)
+                return
 
             # Match and run all supported handers
             for handler in handlers:
                 for match in re.finditer(handler['pattern'], content):
                     await handler['function'](message, match.group(1))
 
-    except Exception as e:
-        pprint(e)
+    except Exception as exception:
+        pprint(exception)
         logging.exception("Exception occurred", exc_info=True)
 
 @bot.event
@@ -521,9 +508,9 @@ async def on_raw_reaction_remove(payload):
     await handle_reaction(payload)
 
 # Commands
-@bot.command()
+@bot.command(name='list')
 @commands.has_permissions(administrator=True)
-async def list(ctx):
+async def _list(ctx):
     embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
 
     for emoji in roles_settings['roles']:
@@ -531,17 +518,17 @@ async def list(ctx):
 
     await ctx.send(embed=embed)
 
-@bot.command()
+@bot.command(name='add')
 @commands.has_permissions(administrator=True)
-async def add(ctx, emoji: str, *, role: discord.Role):
+async def _add(ctx, emoji: str, *, role: discord.Role):
     print(f"{bot.user.name} added: {emoji} -> {role}")
     roles_settings['roles'][emoji] = role.id
     yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
     await ctx.send(f"{bot.user.name} added: {emoji} -> {role}")
 
-@bot.command()
+@bot.command(name='remove')
 @commands.has_permissions(administrator=True)
-async def remove(ctx, emoji: str):
+async def _remove(ctx, emoji: str):
     del roles_settings['roles'][emoji]
     yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
     await ctx.send(f"{bot.user.name} deleted: {emoji}")
