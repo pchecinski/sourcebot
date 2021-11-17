@@ -4,3 +4,6 @@
 # Ignore logs
 /logs/*.log
 /logs/*.json
+
+# Python specific
+__pycache__
