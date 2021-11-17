@@ -3,6 +3,7 @@
 
 # Python standard libraries
 import asyncio
+import datetime
 import hashlib
 import io
 import logging
@@ -168,7 +169,7 @@ async def provide_sources(message):
     await message.reply(f"Source(s):\n{source_urls}")
 
 # Source fetching
-async def handle_pixiv_url(message, submission_id):
+async def handle_pixiv_url(submission_id):
     # Static data for pixiv
     base_url = "https://app-api.pixiv.net"
 
@@ -210,70 +211,62 @@ async def handle_pixiv_url(message, submission_id):
                 "Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"
             })
 
-        async with message.channel.typing():
-            if data['illust']['type'] == 'ugoira':
-                busy_message = await message.channel.send("Oh hey, that's an animated one, it will take me a while!")
+        if data['illust']['type'] == 'ugoira':
+            # Get file metadata (framges and zip_url)
+            async with session.get(
+                url = f"{base_url}/v1/ugoira/metadata",
+                params = { "illust_id": submission_id },
+            ) as response:
+                metadata = await response.json()
 
-                # Get file metadata (framges and zip_url)
-                async with session.get(
-                    url = f"{base_url}/v1/ugoira/metadata",
-                    params = { "illust_id": submission_id },
-                ) as response:
-                    metadata = await response.json()
+            # Download and extract zip archive to temporary directory
+            with TemporaryDirectory() as tmpdir:
+                async with session.get(metadata['ugoira_metadata']['zip_urls']['medium']) as response:
+                    with ZipFile(io.BytesIO(await response.read()), 'r') as zip_ref:
+                        zip_ref.extractall(tmpdir)
 
-                # Download and extract zip archive to temporary directory
-                with TemporaryDirectory() as tmpdir:
-                    async with session.get(metadata['ugoira_metadata']['zip_urls']['medium']) as response:
-                        with ZipFile(io.BytesIO(await response.read()), 'r') as zip_ref:
-                            zip_ref.extractall(tmpdir)
+                # Prepare ffmpeg "concat demuxer" file
+                with open(f"{tmpdir}/ffconcat.txt", 'w') as file:
+                    for frame in metadata['ugoira_metadata']['frames']:
+                        frame_file = frame['file']
+                        frame_duration = round(frame['delay'] / 1000, 4)
+                        file.write(f"file {frame_file}\nduration {frame_duration}\n")
 
-                    # Prepare ffmpeg "concat demuxer" file
-                    with open(f"{tmpdir}/ffconcat.txt", 'w') as file:
-                        for frame in metadata['ugoira_metadata']['frames']:
-                            frame_file = frame['file']
-                            frame_duration = round(frame['delay'] / 1000, 4)
-                            file.write(f"file {frame_file}\nduration {frame_duration}\n")
+                # Run ffmpeg for the given file/directory
+                subprocess.call(
+                    shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt -vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 {submission_id}.gif"),
+                    cwd=os.path.abspath(tmpdir)
+                )
 
-                    # Run ffmpeg for the given file/directory
-                    subprocess.call(
-                        shlex.split(f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt -vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 {submission_id}.gif"),
-                        cwd=os.path.abspath(tmpdir)
-                    )
-
-                    # Prepare attachment file
-                    embeds, files = [], []
-                    embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
-                    if os.stat(f"{tmpdir}/{submission_id}.gif").st_size / 1048576 > 8:
-                        os.rename(f"{tmpdir}/{submission_id}.gif", f"{config['media']['path']}/pixiv-{submission_id}.gif")
-                        embed.set_image(url=f"{config['media']['url']}/pixiv-{submission_id}.gif")
-                    else:
-                        files.append(discord.File(f"{tmpdir}/{submission_id}.gif", filename=f"{submission_id}.gif"))
-                        embed.set_image(url=f"attachment://{submission_id}.gif")
-                    embeds.append(embed)
-
-                # Delete information about dealing with longer upload
-                await busy_message.delete()
-
-            else:
-                if data['illust']['meta_single_page']:
-                    urls = [ data['illust']['meta_single_page']['original_image_url'] ]
-                else:
-                    urls = [ url['image_urls']['original'] for url in data['illust']['meta_pages'] ]
-
+                # Prepare attachment file
                 embeds, files = [], []
-                for index, url in enumerate(urls):
-                    # Prepare the embed object
-                    embed = discord.Embed(title=f"{data['illust']['title']} {index + 1}/{len(urls)} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
+                embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
+                if os.stat(f"{tmpdir}/{submission_id}.gif").st_size / 1048576 > 8:
+                    os.rename(f"{tmpdir}/{submission_id}.gif", f"{config['media']['path']}/pixiv-{submission_id}.gif")
+                    embed.set_image(url=f"{config['media']['url']}/pixiv-{submission_id}.gif")
+                else:
+                    files.append(discord.File(f"{tmpdir}/{submission_id}.gif", filename=f"{submission_id}.gif"))
+                    embed.set_image(url=f"attachment://{submission_id}.gif")
+                embeds.append(embed)
+        else:
+            if data['illust']['meta_single_page']:
+                urls = [ data['illust']['meta_single_page']['original_image_url'] ]
+            else:
+                urls = [ url['image_urls']['original'] for url in data['illust']['meta_pages'] ]
 
-                    ext = os.path.splitext(url)[1]
-                    async with session.get(url) as response:
-                        files.append(discord.File(io.BytesIO(await response.read()), filename=f"{submission_id}_{index}.{ext}"))
-                        embed.set_image(url=f"attachment://{submission_id}_{index}.{ext}")
-                        embeds.append(embed)
+            embeds, files = [], []
+            for index, url in enumerate(urls):
+                # Prepare the embed object
+                embed = discord.Embed(title=f"{data['illust']['title']} {index + 1}/{len(urls)} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
 
-    await message.channel.send(embeds=embeds, files=files)
+                ext = os.path.splitext(url)[1]
+                async with session.get(url) as response:
+                    files.append(discord.File(io.BytesIO(await response.read()), filename=f"{submission_id}_{index}.{ext}"))
+                    embed.set_image(url=f"attachment://{submission_id}_{index}.{ext}")
+                    embeds.append(embed)
+    return { 'embeds': embeds, 'files': files }
 
-async def handle_inkbunny_url(message, submission_id):
+async def handle_inkbunny_url(submission_id):
     async with ClientSession() as session:
         # Log in to API and get session ID
         async with session.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}") as response:
@@ -288,15 +281,14 @@ async def handle_inkbunny_url(message, submission_id):
     submission = data['submissions'][0]
 
     # Parse and embed all files
-    async with message.channel.typing():
-        embeds = []
-        for index, file in enumerate(submission['files']):
-            embed = discord.Embed(title=f"{submission['title']} {index + 1}/{len(submission['files'])} by {submission['username']}", color=discord.Color(0xFCE4F1))
-            embed.set_image(url=file['file_url_screen'])
-            embeds.append(embed)
-    await message.channel.send(embeds=embeds)
+    embeds = []
+    for index, file in enumerate(submission['files']):
+        embed = discord.Embed(title=f"{submission['title']} {index + 1}/{len(submission['files'])} by {submission['username']}", color=discord.Color(0xFCE4F1))
+        embed.set_image(url=file['file_url_screen'])
+        embeds.append(embed)
+    return { 'embeds': embeds }
 
-async def handle_e621_url(message, submission_id):
+async def handle_e621_url(submission_id):
     async with ClientSession() as session:
         session.headers.update({
             'User-Agent': f"{bot.user.name} by {config['e621']['username']}"
@@ -307,16 +299,15 @@ async def handle_e621_url(message, submission_id):
             data = await response.json()
             post = data['post']
 
-            # Check for global blacklist (ignore other links as they already come with previews)
-            if 'young' not in post['tags']['general'] or post['rating'] == 's':
-                return
+        # Check for global blacklist (ignore other links as they already come with previews)
+        if 'young' not in post['tags']['general'] or post['rating'] == 's':
+            return
 
-    async with message.channel.typing():
-        embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
-        embed.set_image(url=post['sample']['url'])
-    await message.channel.send(embed=embed)
+    embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
+    embed.set_image(url=post['sample']['url'])
+    return { 'embed': embed }
 
-async def handle_furaffinity_url(message, submission_id):
+async def handle_furaffinity_url(submission_id):
     cookies = [
         {"name": "a", "value": config['furaffinity']['cookie']['a']},
         {"name": "b", "value": config['furaffinity']['cookie']['b']},
@@ -328,22 +319,20 @@ async def handle_furaffinity_url(message, submission_id):
     if submission.rating == 'General':
         return
 
-    async with message.channel.typing():
-        embed = discord.Embed(title=f"{submission.title} by {submission.author}", color=discord.Color(0xFAAF3A))
-        embed.set_image(url=submission.file_url)
-    await message.channel.send(embed=embed)
+    embed = discord.Embed(title=f"{submission.title} by {submission.author}", color=discord.Color(0xFAAF3A))
+    embed.set_image(url=submission.file_url)
+    return { 'embed': embed }   
 
-async def handle_rule34xxx_url(message, submission_id):
+async def handle_rule34xxx_url(submission_id):
     async with ClientSession() as session:
         async with session.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}") as response:
             data = xmltodict.parse(await response.text())
 
-    async with message.channel.typing():
-        embed = discord.Embed(color=discord.Color(0xABE5A4)) # TODO: Title? Maybe try to use source from the webiste if provided for other handers?
-        embed.set_image(url=data['posts']['post']['@file_url'])
-    await message.channel.send(embed=embed)
+    embed = discord.Embed(color=discord.Color(0xABE5A4)) # TODO: Title? Maybe try to use source from the webiste if provided for other handers?
+    embed.set_image(url=data['posts']['post']['@file_url'])
+    return { 'embed': embed }
 
-async def handle_pawoo_content(message, submission_id):
+async def handle_pawoo_content(submission_id):
     async with ClientSession() as session:
         async with session.get(f"https://pawoo.net/api/v1/statuses/{submission_id}") as response:
             data = await response.json()
@@ -356,12 +345,11 @@ async def handle_pawoo_content(message, submission_id):
     if 'pawoo.net' in data['account']['url'] or 'artalley.social' in data['account']['url']:
         return
 
-    async with message.channel.typing():
-        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
-        embed.set_image(url=data['media_attachments'][0]['url'])
-    await message.channel.send(embed=embed)
+    embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
+    embed.set_image(url=data['media_attachments'][0]['url'])
+    return { 'embed': embed }
 
-async def handle_baraag_content(message, submission_id):
+async def handle_baraag_content(submission_id):
     async with ClientSession() as session:
         async with session.get(f"https://baraag.net/api/v1/statuses/{submission_id}") as response:
             data = await response.json()
@@ -374,12 +362,11 @@ async def handle_baraag_content(message, submission_id):
     if 'baraag.net' in data['account']['url'] or 'artalley.social' in data['account']['url']:
         return
 
-    async with message.channel.typing():
-        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
-        embed.set_image(url=data['media_attachments'][0]['url'])
-    await message.channel.send(embed=embed)
+    embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
+    embed.set_image(url=data['media_attachments'][0]['url'])
+    return { 'embed': embed }
 
-async def handle_twitter_content(message, submission_id):
+async def handle_twitter_content(submission_id):
     # Tweet ID from URL
     tweet_id = submission_id.split('/')[-1]
     async with ClientSession() as session:
@@ -414,12 +401,10 @@ async def handle_twitter_content(message, submission_id):
 
             if os.stat(f"{tmpdir}/{filename}").st_size / 1048576 > 8:
                 os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/tweet-{filename}")
-                await message.channel.send(f"{config['media']['url']}/tweet-{filename}")
-                return
+                return { 'content': f"{config['media']['url']}/tweet-{filename}"}
 
-            async with message.channel.typing():
-                with open(f"{tmpdir}/{filename}", 'rb') as file:
-                    await message.channel.send(file=discord.File(file, filename=filename))
+            with open(f"{tmpdir}/{filename}", 'rb') as file:
+                return { 'file': discord.File(file, filename=filename) }
 
 # Parser regular expressions list
 handlers = [
@@ -490,7 +475,10 @@ async def on_message(message):
             # Match and run all supported handers
             for handler in handlers:
                 for match in re.finditer(handler['pattern'], content):
-                    await handler['function'](message, match.group(1))
+                    async with message.channel.typing():
+                        kwargs = await handler['function'](match.group(1))
+                        if kwargs:
+                            await message.channel.send(**kwargs)
 
     except Exception as exception:
         pprint(exception)
