@@ -3,7 +3,6 @@
 
 # Python standard libraries
 import asyncio
-import datetime
 import hashlib
 import io
 import logging
@@ -61,7 +60,7 @@ def tiktok_worker():
             data = api.get_video_by_url(url)
         except Exception:
             # api.clean_up() # TODO: possible fix for some errors
-            logging.exception("TIKTOK THREAD: Exception occurred", exc_info=True)
+            logger_tiktok.exception("TIKTOK THREAD: Exception occurred", exc_info=True)
 
             coro = message.add_reaction('<:boterror:854665168889184256>')
             task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
@@ -74,9 +73,8 @@ def tiktok_worker():
         mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
 
         # Log tiktok urls to tiktok.log
-        with open('logs/tiktok.log', 'a') as file:
-            location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-            file.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{url}, size: {size:.2f} MB, mime: {mime}\n")
+        location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
+        logger_tiktok.info(f"[{location}]\n{url}, size: {size:.2f} MB, mime: {mime}")
 
         if mime != 'video/mp4':
             coro = message.add_reaction('<:boterror:854665168889184256>')
@@ -156,13 +154,12 @@ async def provide_sources(message):
             sources.append(f"<{results[0].urls[0]}>")
 
             # Log source to sources.log
-            with open('logs/sources.log', 'a') as file:
-                location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-                file.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] [{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)\n")
+            location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
+            logger_sources.info(f"[{location}]\n{attachment.url} -> {results[0].urls[0]} ({results[0].similarity}%)")
 
         except Exception:
             pprint(f"{attachment.url}, {results}")
-            logging.exception("Exception occurred (source provider)", exc_info=True)
+            logger_sources.exception("Exception occurred (source provider)", exc_info=True)
 
     if len(sources) == 0:
         return
@@ -447,7 +444,7 @@ tiktok_patterns = {
 # Events
 @bot.event
 async def on_ready():
-    print(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}]: The great and only {bot.user.name} has connected to Discord API!")
+    logging.info(f"{bot.user.name} ready!")
 
 @bot.event
 async def on_message(message):
@@ -523,18 +520,32 @@ async def _list(ctx):
 async def _add(ctx, emoji: str, *, role: discord.Role):
     print(f"{bot.user.name} added: {emoji} -> {role}")
     roles_settings['roles'][emoji] = role.id
-    yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
+    with open(ROLES_SETTINGS, 'w') as file:
+        yaml.dump(roles_settings, file)
     await ctx.send(f"{bot.user.name} added: {emoji} -> {role}")
 
 @bot.command(name='remove')
 @commands.has_permissions(administrator=True)
 async def _remove(ctx, emoji: str):
     del roles_settings['roles'][emoji]
-    yaml.dump(roles_settings, open(ROLES_SETTINGS, 'w'))
+    with open(ROLES_SETTINGS, 'w') as file:
+        yaml.dump(roles_settings, file)
     await ctx.send(f"{bot.user.name} deleted: {emoji}")
 
+def setup_logger(name, log_file, level=logging.INFO):
+    handler = logging.FileHandler(log_file)
+    handler.setFormatter(logging.Formatter('[%(levelname)s] [%(asctime)s]: %(message)s'))
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+    return logger
+
 if __name__ == '__main__':
-    logging.basicConfig(filename='logs/error.log', format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+    global logger_tiktok, logger_sources
+    logging.basicConfig(filename='logs/error.log', format='[%(levelname)s] [%(asctime)s]: %(message)s', level=logging.ERROR)
+    logger_tiktok = setup_logger('tiktok', 'logs/tiktok.log')
+    logger_sources = setup_logger('sources', 'logs/sources.log')
 
     # Start tiktok thread
     threading.Thread(target=tiktok_worker, daemon=True).start()
