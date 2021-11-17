@@ -89,8 +89,8 @@ async def pixiv(config, submission_id):
                 # Run ffmpeg for the given file/directory
                 subprocess.call(
                     shlex.split(
-                        f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt"
-                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
+                        f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt "
+                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
                         f"{submission_id}.gif"
                     ),
                     cwd=os.path.abspath(tmpdir)
@@ -274,8 +274,8 @@ async def twitter(config, submission_id):
             if tweet_data['includes']['media'][0]['type'] == 'animated_gif':
                 subprocess.call(
                     shlex.split(
-                        f"ffmpeg -loglevel fatal -hide_banner -y -i {filename}"
-                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0"
+                        f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} "
+                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
                         f"{tweet_id}.gif"
                     ),
                     cwd=os.path.abspath(tmpdir)

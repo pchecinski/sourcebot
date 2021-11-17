@@ -229,10 +229,9 @@ async def on_message(message):
             # Match and run all supported handers
             for handler in handlers:
                 for match in re.finditer(handler['pattern'], content):
-                    async with message.channel.typing():
-                        kwargs = await handler['function'](config, match.group(1))
-                        if kwargs:
-                            await message.channel.send(**kwargs)
+                    kwargs = await handler['function'](config, match.group(1))
+                    if kwargs:
+                        await message.channel.send(**kwargs)
 
     except Exception as exception:
         pprint(exception)
