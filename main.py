@@ -15,7 +15,6 @@ from pprint import pprint
 # Third-party libraries
 import discord
 import magic
-import yaml
 from aiohttp import ClientSession
 from TikTokApi import TikTokApi
 from discord.ext import commands
@@ -23,13 +22,7 @@ from saucenao_api import SauceNao
 
 # Local modules
 import handlers
-
-MAIN_CONFIG = "config/main.yml"
-ROLES_SETTINGS = "config/roles.yml"
-
-# Load config files
-config = yaml.safe_load(open(MAIN_CONFIG))
-roles_settings = yaml.safe_load(open(ROLES_SETTINGS))
+from config import config, roles_settings
 
 # Prepare bot with intents
 intents = discord.Intents.default()
@@ -161,7 +154,7 @@ async def provide_sources(message):
     await message.reply(f"Source(s):\n{source_urls}")
 
 # Parser regular expressions list
-handlers = [
+parsers = [
     { 'pattern': re.compile(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)"), 'function': handlers.pixiv },
     { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)"), 'function': handlers.inkbunny },
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
@@ -189,6 +182,13 @@ async def on_ready():
 async def on_message(message):
     try:
         if message.author == bot.user:
+            return
+
+        if isinstance(message.channel, discord.DMChannel) and message.attachments:
+            for attachment in message.attachments:
+                if attachment.filename.endswith('mp4'):
+                    kwargs = await handlers.convert(attachment.filename, attachment.url)
+                    await message.channel.send(**kwargs)
             return
 
         # Process commands (emojis)
@@ -227,9 +227,9 @@ async def on_message(message):
                 return
 
             # Match and run all supported handers
-            for handler in handlers:
-                for match in re.finditer(handler['pattern'], content):
-                    kwargs = await handler['function'](config, match.group(1))
+            for parser in parsers:
+                for match in re.finditer(parser['pattern'], content):
+                    kwargs = await parser['function'](match.group(1))
                     if kwargs:
                         await message.channel.send(**kwargs)
 

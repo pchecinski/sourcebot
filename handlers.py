@@ -3,12 +3,14 @@ Definiton of hander functions for sourcebot.
 '''
 
 # Python standard libraries
+import asyncio
+import aiofiles
 import datetime
 import hashlib
 import io
 import os
 import shlex
-import subprocess
+from time import perf_counter
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 
@@ -19,8 +21,11 @@ import xmltodict
 import youtube_dl
 from aiohttp import ClientSession, BasicAuth
 
+# Local modules
+from config import config
+
 # Source fetching
-async def pixiv(config, submission_id):
+async def pixiv(submission_id):
     '''
     Hander for pixiv.net
     '''
@@ -80,26 +85,25 @@ async def pixiv(config, submission_id):
                         zip_ref.extractall(tmpdir)
 
                 # Prepare ffmpeg "concat demuxer" file
-                with open(f"{tmpdir}/ffconcat.txt", 'w') as file:
+                async with aiofiles.open(f"{tmpdir}/ffconcat.txt", 'w') as file:
                     for frame in metadata['ugoira_metadata']['frames']:
                         frame_file = frame['file']
                         frame_duration = round(frame['delay'] / 1000, 4)
-                        file.write(f"file {frame_file}\nduration {frame_duration}\n")
+                        await file.write(f"file {frame_file}\nduration {frame_duration}\n")
 
                 # Run ffmpeg for the given file/directory
-                subprocess.call(
-                    shlex.split(
-                        f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt "
-                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                        f"{submission_id}.gif"
-                    ),
-                    cwd=os.path.abspath(tmpdir)
+                args = shlex.split(
+                    f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt "
+                    "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
+                    f"{submission_id}.gif"
                 )
+                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir)).wait()
+                await ffmpeg.wait()
 
                 # Prepare attachment file
                 embeds, files = [], []
                 embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
-                if os.stat(f"{tmpdir}/{submission_id}.gif").st_size / 1048576 > 8:
+                if os.stat(f"{tmpdir}/{submission_id}.gif").st_size > 8388608: # 8M
                     os.rename(f"{tmpdir}/{submission_id}.gif", f"{config['media']['path']}/pixiv-{submission_id}.gif")
                     embed.set_image(url=f"{config['media']['url']}/pixiv-{submission_id}.gif")
                 else:
@@ -124,7 +128,7 @@ async def pixiv(config, submission_id):
                     embeds.append(embed)
     return { 'embeds': embeds, 'files': files }
 
-async def inkbunny(config, submission_id):
+async def inkbunny(submission_id):
     '''
     Hander for inkbunny.net
     '''
@@ -149,7 +153,7 @@ async def inkbunny(config, submission_id):
         embeds.append(embed)
     return { 'embeds': embeds }
 
-async def e621(config, submission_id):
+async def e621(submission_id):
     '''
     Hander for e621.net
     '''
@@ -171,7 +175,7 @@ async def e621(config, submission_id):
     embed.set_image(url=post['sample']['url'])
     return { 'embed': embed }
 
-async def furaffinity(config, submission_id):
+async def furaffinity(submission_id):
     '''
     Hander for furaffinity.net
     '''
@@ -190,7 +194,7 @@ async def furaffinity(config, submission_id):
     embed.set_image(url=submission.file_url)
     return { 'embed': embed }
 
-async def rule34xxx(config, submission_id):
+async def rule34xxx(submission_id):
     '''
     Hander for rule34.xxx
     '''
@@ -202,7 +206,7 @@ async def rule34xxx(config, submission_id):
     embed.set_image(url=data['posts']['post']['@file_url'])
     return { 'embed': embed }
 
-async def pawoo(config, submission_id):
+async def pawoo(submission_id):
     '''
     Hander for pawoo.net
     '''
@@ -222,7 +226,7 @@ async def pawoo(config, submission_id):
     embed.set_image(url=data['media_attachments'][0]['url'])
     return { 'embed': embed }
 
-async def baraag(config, submission_id):
+async def baraag(submission_id):
     '''
     Hander for baraag.net
     '''
@@ -242,7 +246,7 @@ async def baraag(config, submission_id):
     embed.set_image(url=data['media_attachments'][0]['url'])
     return { 'embed': embed }
 
-async def twitter(config, submission_id):
+async def twitter(submission_id):
     '''
     Hander for twitter.com
     '''
@@ -272,19 +276,37 @@ async def twitter(config, submission_id):
 
             # Convert Animated GIFs to .gif so they loop in Discord
             if tweet_data['includes']['media'][0]['type'] == 'animated_gif':
-                subprocess.call(
-                    shlex.split(
-                        f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} "
-                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                        f"{tweet_id}.gif"
-                    ),
-                    cwd=os.path.abspath(tmpdir)
+                args = shlex.split(
+                    f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} "
+                    "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
+                    f"{tweet_id}.gif"
                 )
+                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir)).wait()
+                await ffmpeg.wait()
                 filename = f"{tweet_id}.gif"
 
-            if os.stat(f"{tmpdir}/{filename}").st_size / 1048576 > 8:
+            if os.stat(f"{tmpdir}/{filename}").st_size > 8388608: # 8M
                 os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/tweet-{filename}")
                 return { 'content': f"{config['media']['url']}/tweet-{filename}"}
 
             with open(f"{tmpdir}/{filename}", 'rb') as file:
                 return { 'file': discord.File(file, filename=filename) }
+
+# File converter
+async def convert(filename, url):
+    with TemporaryDirectory() as tmpdir:
+        init_time = perf_counter()
+        async with ClientSession() as session, session.get(url) as response:
+            async with aiofiles.open(f"{tmpdir}/{filename}", "wb") as file:
+                await file.write(await response.read())
+                args = shlex.split(
+                    f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} "
+                    "-c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k "
+                    f"discord-{filename}"
+                )
+                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
+                await ffmpeg.wait()
+                filename = f"discord-{filename}"
+
+                os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/{filename}")
+                return { 'content': f"Converted {filename} to x264 in {perf_counter() - init_time:.2f}s\n{config['media']['url']}/{filename}" }
