@@ -97,7 +97,7 @@ async def pixiv(submission_id):
                     "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
                     f"{submission_id}.gif"
                 )
-                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir)).wait()
+                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                 await ffmpeg.wait()
 
                 # Prepare attachment file
@@ -281,7 +281,7 @@ async def twitter(submission_id):
                     "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
                     f"{tweet_id}.gif"
                 )
-                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir)).wait()
+                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                 await ffmpeg.wait()
                 filename = f"{tweet_id}.gif"
 
