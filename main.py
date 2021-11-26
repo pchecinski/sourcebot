@@ -22,7 +22,7 @@ from saucenao_api import SauceNao
 
 # Local modules
 import handlers
-from config import config, roles_settings
+from config import config, roles_settings, roles_update
 
 # Prepare bot with intents
 intents = discord.Intents.default()
@@ -261,16 +261,14 @@ async def _list(ctx):
 async def _add(ctx, emoji: str, *, role: discord.Role):
     print(f"{bot.user.name} added: {emoji} -> {role}")
     roles_settings['roles'][emoji] = role.id
-    with open(ROLES_SETTINGS, 'w') as file:
-        yaml.dump(roles_settings, file)
+    roles_update()
     await ctx.send(f"{bot.user.name} added: {emoji} -> {role}")
 
 @bot.command(name='remove')
 @commands.has_permissions(administrator=True)
 async def _remove(ctx, emoji: str):
     del roles_settings['roles'][emoji]
-    with open(ROLES_SETTINGS, 'w') as file:
-        yaml.dump(roles_settings, file)
+    roles_update()
     await ctx.send(f"{bot.user.name} deleted: {emoji}")
 
 def setup_logger(name, log_file, level=logging.INFO):
@@ -284,8 +282,8 @@ def setup_logger(name, log_file, level=logging.INFO):
 
 if __name__ == '__main__':
     logging.basicConfig(filename='logs/error.log', format='[%(levelname)s] [%(asctime)s]: %(message)s', level=logging.ERROR)
-    LOGGER_TIKTOK = setup_logger('tiktok', 'logs/tiktok.log')
-    LOGGER_SOURCES = setup_logger('sources', 'logs/sources.log')
+    LOGGER_TIKTOK = setup_logger('tiktok', 'logs/tiktok.log', level=logging.ERROR)
+    LOGGER_SOURCES = setup_logger('sources', 'logs/sources.log', level=logging.ERROR)
 
     # Start tiktok thread
     threading.Thread(target=tiktok_worker, daemon=True).start()
