@@ -4,7 +4,6 @@ Definiton of hander functions for sourcebot.
 
 # Python standard libraries
 import asyncio
-import aiofiles
 import datetime
 import hashlib
 import io
@@ -15,6 +14,7 @@ from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 
 # Third-party libraries
+import aiofiles
 import discord
 import faapi
 import xmltodict
@@ -254,7 +254,6 @@ async def twitter(submission_id):
     tweet_id = submission_id.split('/')[-1]
     async with ClientSession() as session:
         session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
-
         async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys&media.fields=type") as response:
             tweet_data = await response.json()
 
@@ -294,6 +293,9 @@ async def twitter(submission_id):
 
 # File converter
 async def convert(filename, url):
+    '''
+    ffmpeg media converter for .mp4 and .webm
+    '''
     with TemporaryDirectory() as tmpdir:
         init_time = perf_counter()
         async with ClientSession() as session, session.get(url) as response:

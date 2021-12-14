@@ -43,30 +43,12 @@ def tiktok_worker():
         tiktok_id = url.split('/')[-1]
 
         api = TikTokApi.get_instance(custom_did="".join(random.choices(string.digits, k=19)))
-        try:
-            data = api.get_video_by_url(url)
-        except Exception:
-            LOGGER_TIKTOK.exception("TIKTOK THREAD: Exception occurred", exc_info=True)
-
-            coro = message.add_reaction('<:boterror:854665168889184256>')
-            task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
-            task.result()
-
-            tiktok_queue.task_done()
-            continue
-
-        size = len(data) / 1048576
+        data = api.get_video_by_url(url)
         mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
 
-        # Log tiktok urls to tiktok.log
-        location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-        LOGGER_TIKTOK.info('[%s]\n%s, size: %.2f MB, mime: %s', location, url, size, mime)
-
-        if mime != 'video/mp4':
+        if not data or mime != 'video/mp4':
             coro = message.add_reaction('<:boterror:854665168889184256>')
-        elif size == 0:
-            coro = message.add_reaction('<:botempty:854665168888528896>')
-        elif size > 8.0:
+        elif len(data) > 8388608: # 8M
             with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
                 file.write(data)
             coro = message.channel.send(f"{config['media']['url']}/tiktok-{tiktok_id}.mp4")
