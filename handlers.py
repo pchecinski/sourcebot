@@ -119,7 +119,10 @@ async def pixiv(submission_id):
             embeds, files = [], []
             for index, url in enumerate(urls):
                 # Prepare the embed object
-                embed = discord.Embed(title=f"{data['illust']['title']} {index + 1}/{len(urls)} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
+                embed = discord.Embed(
+                    title=f"{data['illust']['title']} {index + 1}/{len(urls)} by {data['illust']['user']['name']}",
+                    color=discord.Color(0x40C2FF)
+                )
 
                 ext = os.path.splitext(url)[1]
                 async with session.get(url) as response:
@@ -134,7 +137,9 @@ async def inkbunny(submission_id):
     '''
     async with ClientSession() as session:
         # Log in to API and get session ID
-        async with session.get(f"https://inkbunny.net/api_login.php?username={config['inkbunny']['username']}&password={config['inkbunny']['password']}") as response:
+        async with session.get("https://inkbunny.net/api_login.php",
+                params = { 'username': config['inkbunny']['username'], 'password': config['inkbunny']['password'] }
+            ) as response:
             data = await response.json()
             session_id = data['sid']
 
@@ -157,13 +162,13 @@ async def e621(submission_id):
     '''
     Hander for e621.net
     '''
-    async with ClientSession() as session:
+    async with ClientSession(auth = BasicAuth(config['e621']['username'], config['e621']['api_key'])) as session:
         session.headers.update({
             'User-Agent': f"sourcebot by {config['e621']['username']}"
         })
 
         # Get image data using API Endpoint
-        async with session.get(f"https://e621.net/posts/{submission_id}.json", auth=BasicAuth(config['e621']['username'], config['e621']['api_key'])) as response:
+        async with session.get(f"https://e621.net/posts/{submission_id}.json") as response:
             data = await response.json()
             post = data['post']
 
@@ -195,7 +200,10 @@ async def e621_pools(pool_id):
                     data = await response.json()
                     post = data['post']
 
-                embed = discord.Embed(title=f"{pool_data['name']} {index + 1}/{pool_data['post_count']} by {pool_data['creator_name']}", color=discord.Color(0x00549E))
+                embed = discord.Embed(
+                    title=f"{pool_data['name']} {index + 1}/{pool_data['post_count']} by {pool_data['creator_name']}",
+                    color=discord.Color(0x00549E)
+                )
                 embed.set_image(url=post['sample']['url'])
                 embeds.append(embed)
 
@@ -292,12 +300,8 @@ async def twitter(submission_id):
     # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
         with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
-            try:
-                meta = ydl.extract_info(f"https://twitter.com/{submission_id}")
-                filename = f"{tweet_id}.{meta['ext']}"
-            except Exception:
-                print(f"{tweet_id}: ytdl exception, that shouldn't happen..")
-                return
+            meta = ydl.extract_info(f"https://twitter.com/{submission_id}")
+            filename = f"{tweet_id}.{meta['ext']}"
 
             # Convert Animated GIFs to .gif so they loop in Discord
             if tweet_data['includes']['media'][0]['type'] == 'animated_gif':

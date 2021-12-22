@@ -1,5 +1,8 @@
 #!/home/discordbot/sourcebot-env/bin/python3.8
 # -*- coding: utf-8 -*-
+'''
+Main source code / entry point for sourcebot
+'''
 
 # Python standard libraries
 import asyncio
@@ -37,6 +40,9 @@ tiktok_queue = queue.Queue()
 spoiler_regex = re.compile(r"\|\|(.*?)\|\|", re.DOTALL)
 
 def tiktok_worker():
+    '''
+    Tiktok converter thread
+    '''
     while True:
         # Get a task from queue
         message, url = tiktok_queue.get()
@@ -64,6 +70,9 @@ def tiktok_worker():
 
 # Role reactions
 async def handle_reaction(payload):
+    '''
+    Hander for reactions (removing bot's messages & roles in guilds)
+    '''
     # Parse emoji as string (works for custom emojis and unicode)
     emoji = str(payload.emoji)
 
@@ -106,28 +115,22 @@ async def handle_reaction(payload):
 
 # Sourcenao
 async def provide_sources(message):
+    '''
+    SauceNao fetcher (quite messy!)
+    '''
     sauce = SauceNao(config['saucenao']['token'])
     sources = []
 
     for attachment in message.attachments:
         results = sauce.from_url(attachment.url)
 
-        if len(results) == 0:
-            continue
-
-        if results[0].similarity < 80:
+        if not results or results[0].similarity < 80:
             continue
 
         try:
             sources.append(f"<{results[0].urls[0]}>")
-
-            # Log source to sources.log
-            location = f"{message.author} (dm)" if isinstance(message.channel, discord.DMChannel) else f"{message.guild.name}/{message.channel.name}"
-            LOGGER_SOURCES.info('[%s]\n%s -> %s (%.2f%%)', location, attachment.url, results[0].urls[0], results[0].similarity)
-
-        except Exception:
+        except IndexError:
             pprint(f"{attachment.url}, {results}")
-            LOGGER_SOURCES.exception("Exception occurred (source provider)", exc_info=True)
 
     if len(sources) == 0:
         return
@@ -156,85 +159,87 @@ tiktok_patterns = {
     'long': re.compile(r"(?<=https://www.tiktok.com/)(@\w+\/video\/\w+)")
 }
 
-# Events
-@bot.event
-async def on_ready():
-    logging.info('%s ready!', bot.user.name)
-
 @bot.event
 async def on_message(message):
-    try:
-        if message.author == bot.user:
+    '''
+    Events for each message (main functionality of the bot)
+    '''
+    if message.author == bot.user:
+        return
+
+    if isinstance(message.channel, discord.DMChannel) and message.attachments:
+        for attachment in message.attachments:
+            if attachment.filename.endswith('mp4'):
+                kwargs = await handlers.convert(attachment.filename, attachment.url)
+                await message.channel.send(**kwargs)
+        return
+
+    # Process commands (emojis)
+    await bot.process_commands(message)
+
+    # Ignore text in valid spoiler tag
+    content = re.sub(spoiler_regex, '', message.content)
+
+    # Post tiktok videos
+    for match in re.finditer(tiktok_patterns['short'], content):
+        # Support for short url (mobile links)
+        short_url = 'https://vm.tiktok.com/' + match.group(1)
+
+        # Parse short url with HTTP HEAD + redirects
+        async with ClientSession() as session:
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36'
+            })
+            async with session.head(short_url, allow_redirects=True) as response:
+                url = str(response.url).split('?')[0] # remove all the junk in query data
+
+        # Add task to tiktok queue
+        tiktok_queue.put((message, url))
+
+    for match in re.finditer(tiktok_patterns['long'], content):
+        # Support for long url (browser links)
+        url = 'https://www.tiktok.com/' + match.group(1)
+
+        # Add task to tiktok queue
+        tiktok_queue.put((message, url))
+
+    # Source providing service handlers
+    if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
+        if len(message.attachments) > 0:
+            await provide_sources(message)
             return
 
-        if isinstance(message.channel, discord.DMChannel) and message.attachments:
-            for attachment in message.attachments:
-                if attachment.filename.endswith('mp4'):
-                    kwargs = await handlers.convert(attachment.filename, attachment.url)
-                    await message.channel.send(**kwargs)
-            return
-
-        # Process commands (emojis)
-        await bot.process_commands(message)
-
-        # Ignore text in valid spoiler tag
-        content = re.sub(spoiler_regex, '', message.content)
-
-        # Post tiktok videos
-        for match in re.finditer(tiktok_patterns['short'], content):
-            # Support for short url (mobile links)
-            short_url = 'https://vm.tiktok.com/' + match.group(1)
-
-            # Parse short url with HTTP HEAD + redirects
-            async with ClientSession() as session:
-                session.headers.update({
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36'
-                })
-                async with session.head(short_url, allow_redirects=True) as response:
-                    url = str(response.url).split('?')[0] # remove all the junk in query data
-
-            # Add task to tiktok queue
-            tiktok_queue.put((message, url))
-
-        for match in re.finditer(tiktok_patterns['long'], content):
-            # Support for long url (browser links)
-            url = 'https://www.tiktok.com/' + match.group(1)
-
-            # Add task to tiktok queue
-            tiktok_queue.put((message, url))
-
-        # Source providing service handlers
-        if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
-            if len(message.attachments) > 0:
-                await provide_sources(message)
-                return
-
-            # Match and run all supported handers
-            for parser in parsers:
-                for match in re.finditer(parser['pattern'], content):
-                    output = await parser['function'](match.group(1))
-                    if isinstance(output, list):
-                        for kwargs in output:
-                            await message.channel.send(**kwargs)
-                    elif output:
-                        await message.channel.send(**output)
-
-    except Exception as exception:
-        pprint(exception)
-        logging.exception("Exception occurred", exc_info=True)
+        # Match and run all supported handers
+        for parser in parsers:
+            for match in re.finditer(parser['pattern'], content):
+                output = await parser['function'](match.group(1))
+                if isinstance(output, list):
+                    for kwargs in output:
+                        await message.channel.send(**kwargs)
+                elif output:
+                    await message.channel.send(**output)
 
 @bot.event
 async def on_raw_reaction_add(payload):
+    '''
+    Reaction hander (adding reactions)
+    '''
     await handle_reaction(payload)
 
 @bot.event
 async def on_raw_reaction_remove(payload):
+    '''
+    Reaction hander (removing reactions)
+    '''
     await handle_reaction(payload)
 
 # Commands
 @bot.command(name='list')
 @commands.has_permissions(administrator=True)
 async def _list(ctx):
+    '''
+    command: list reaction roles
+    '''
     embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
 
     for emoji in roles_settings['roles']:
@@ -245,6 +250,9 @@ async def _list(ctx):
 @bot.command(name='add')
 @commands.has_permissions(administrator=True)
 async def _add(ctx, emoji: str, *, role: discord.Role):
+    '''
+    command: add new reaction role
+    '''
     print(f"{bot.user.name} added: {emoji} -> {role}")
     roles_settings['roles'][emoji] = role.id
     roles_update()
@@ -253,23 +261,15 @@ async def _add(ctx, emoji: str, *, role: discord.Role):
 @bot.command(name='remove')
 @commands.has_permissions(administrator=True)
 async def _remove(ctx, emoji: str):
+    '''
+    command: remove reaction role
+    '''
     del roles_settings['roles'][emoji]
     roles_update()
     await ctx.send(f"{bot.user.name} deleted: {emoji}")
 
-def setup_logger(name, log_file, level=logging.INFO):
-    handler = logging.FileHandler(log_file)
-    handler.setFormatter(logging.Formatter('[%(levelname)s] [%(asctime)s]: %(message)s'))
-
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.addHandler(handler)
-    return logger
-
 if __name__ == '__main__':
     logging.basicConfig(filename='logs/error.log', format='[%(levelname)s] [%(asctime)s]: %(message)s', level=logging.ERROR)
-    LOGGER_TIKTOK = setup_logger('tiktok', 'logs/tiktok.log', level=logging.ERROR)
-    LOGGER_SOURCES = setup_logger('sources', 'logs/sources.log', level=logging.ERROR)
 
     # Start tiktok thread
     threading.Thread(target=tiktok_worker, daemon=True).start()
