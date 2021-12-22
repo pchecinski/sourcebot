@@ -141,6 +141,7 @@ parsers = [
     { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)"), 'function': handlers.inkbunny },
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
     { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handlers.e621 },
+    { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools },
     { 'pattern': re.compile(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handlers.rule34xxx },
     { 'pattern': re.compile(r"(?<=https://pawoo.net/web/statuses/)(\w+)"), 'function': handlers.pawoo },
     { 'pattern': re.compile(r"(?<=https://pawoo.net/)@\w+/(\w+)"), 'function': handlers.pawoo },
@@ -211,9 +212,12 @@ async def on_message(message):
             # Match and run all supported handers
             for parser in parsers:
                 for match in re.finditer(parser['pattern'], content):
-                    kwargs = await parser['function'](match.group(1))
-                    if kwargs:
-                        await message.channel.send(**kwargs)
+                    output = await parser['function'](match.group(1))
+                    if isinstance(output, list):
+                        for kwargs in output:
+                            await message.channel.send(**kwargs)
+                    elif output:
+                        await message.channel.send(**output)
 
     except Exception as exception:
         pprint(exception)

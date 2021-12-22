@@ -151,7 +151,7 @@ async def inkbunny(submission_id):
         embed = discord.Embed(title=f"{submission['title']} {index + 1}/{len(submission['files'])} by {submission['username']}", color=discord.Color(0xFCE4F1))
         embed.set_image(url=file['file_url_screen'])
         embeds.append(embed)
-    return { 'embeds': embeds }
+    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
 async def e621(submission_id):
     '''
@@ -174,6 +174,32 @@ async def e621(submission_id):
     embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
     embed.set_image(url=post['sample']['url'])
     return { 'embed': embed }
+
+async def e621_pools(pool_id):
+    '''
+    Hander for e621.net pools (galleries)
+    '''
+    # Parse and embed all files
+    embeds = []
+    async with ClientSession(auth = BasicAuth(config['e621']['username'], config['e621']['api_key'])) as session:
+        session.headers.update({
+            'User-Agent': f"sourcebot by {config['e621']['username']}"
+        })
+
+        # Get image data using API Endpoint
+        async with session.get(f"https://e621.net/pools/{pool_id}.json") as response:
+            pool_data = await response.json()
+
+            for index, submission_id in enumerate(pool_data['post_ids']):
+                async with session.get(f"https://e621.net/posts/{submission_id}.json") as response:
+                    data = await response.json()
+                    post = data['post']
+
+                embed = discord.Embed(title=f"{pool_data['name']} {index + 1}/{pool_data['post_count']} by {pool_data['creator_name']}", color=discord.Color(0x00549E))
+                embed.set_image(url=post['sample']['url'])
+                embeds.append(embed)
+
+    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
 async def furaffinity(submission_id):
     '''
