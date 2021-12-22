@@ -129,7 +129,7 @@ async def pixiv(submission_id):
                     files.append(discord.File(io.BytesIO(await response.read()), filename=f"{submission_id}_{index}.{ext}"))
                     embed.set_image(url=f"attachment://{submission_id}_{index}.{ext}")
                     embeds.append(embed)
-    return { 'embeds': embeds, 'files': files }
+    return { 'embeds': embeds[:10], 'files': files[:10] }
 
 async def inkbunny(submission_id):
     '''
@@ -317,6 +317,23 @@ async def twitter(submission_id):
             if os.stat(f"{tmpdir}/{filename}").st_size > 8388608: # 8M
                 os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/tweet-{filename}")
                 return { 'content': f"{config['media']['url']}/tweet-{filename}"}
+
+            with open(f"{tmpdir}/{filename}", 'rb') as file:
+                return { 'file': discord.File(file, filename=filename) }
+
+async def youtube(video_id):
+    '''
+    youtube downloading via url
+    '''
+    # Download video to temporary directory
+    with TemporaryDirectory() as tmpdir:
+        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video_id}.%(ext)s"}) as ydl:
+            meta = ydl.extract_info(f"https://youtube.com/watch?v={video_id}")
+            filename = f"{video_id}.{meta['ext']}"
+
+            if os.stat(f"{tmpdir}/{filename}").st_size > 8388608: # 8M
+                os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
+                return { 'content': f"{config['media']['url']}/youtube-{filename}"}
 
             with open(f"{tmpdir}/{filename}", 'rb') as file:
                 return { 'file': discord.File(file, filename=filename) }

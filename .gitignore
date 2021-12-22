@@ -2,8 +2,6 @@
 /config/*.yml
 
 # Ignore logs
-/logs/*.log
-/logs/*.json
-
+*.log
 # Python specific
 __pycache__

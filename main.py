@@ -152,6 +152,7 @@ parsers = [
     { 'pattern': re.compile(r"(?<=https://baraag.net/)@\w+/(\w+)"), 'function': handlers.baraag },
     { 'pattern': re.compile(r"(?<=https://twitter.com/)(\w+/status/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?<=https://fxtwitter.com/)(\w+/status/\w+)"), 'function': handlers.twitter },
+    { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube }
 ]
 
 tiktok_patterns = {
@@ -269,7 +270,7 @@ async def _remove(ctx, emoji: str):
     await ctx.send(f"{bot.user.name} deleted: {emoji}")
 
 if __name__ == '__main__':
-    logging.basicConfig(filename='logs/error.log', format='[%(levelname)s] [%(asctime)s]: %(message)s', level=logging.ERROR)
+    logging.basicConfig(filename='main.log', format='[%(levelname)s] [%(asctime)s]: %(message)s', level=logging.ERROR)
 
     # Start tiktok thread
     threading.Thread(target=tiktok_worker, daemon=True).start()
