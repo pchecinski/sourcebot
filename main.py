@@ -156,8 +156,8 @@ parsers = [
 ]
 
 tiktok_patterns = {
-    'short': re.compile(r"(?<=https://vm.tiktok.com/)(\w+)"),
-    'long': re.compile(r"(?<=https://www.tiktok.com/)(@\w+\/video\/\w+)")
+    'short': re.compile(r"(?:https:\/\/vm.tiktok.com\/|https:\/\/www.tiktok.com\/t\/)(\w+)"),
+    'long': re.compile(r"(?:https:\/\/www.tiktok.com\/)(@\w+\/video\/\w+)")
 }
 
 @bot.event
@@ -195,14 +195,14 @@ async def on_message(message):
                 url = str(response.url).split('?')[0] # remove all the junk in query data
 
         # Add task to tiktok queue
-        tiktok_queue.put((message, url))
+        tiktok_queue.put_nowait((message, url))
 
     for match in re.finditer(tiktok_patterns['long'], content):
         # Support for long url (browser links)
         url = 'https://www.tiktok.com/' + match.group(1)
 
         # Add task to tiktok queue
-        tiktok_queue.put((message, url))
+        tiktok_queue.put_nowait((message, url))
 
     # Source providing service handlers
     if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
