@@ -19,7 +19,7 @@ from pprint import pprint
 import discord
 import magic
 from aiohttp import ClientSession
-from discord.ext import commands
+from discord.ext.commands import has_permissions
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 from saucenao_api import SauceNao
@@ -33,7 +33,7 @@ from config import config, roles_settings, roles_update
 intents = discord.Intents.default()
 intents.members = True
 intents.reactions = True
-bot = commands.Bot(command_prefix='$', intents=intents)
+bot = discord.Bot(intents=intents)
 
 # Tiktok queue
 tiktok_queue = queue.Queue()
@@ -187,9 +187,6 @@ async def on_message(message):
                 await message.channel.send(**kwargs)
         return
 
-    # Process commands (emojis)
-    await bot.process_commands(message)
-
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
 
@@ -247,39 +244,54 @@ async def on_raw_reaction_remove(payload):
     await handle_reaction(payload)
 
 # Commands
-@bot.command(name='list')
-@commands.has_permissions(administrator=True)
+@bot.slash_command(guild_ids = config['discord']['guild_ids'], name='tiktok')
+async def _tiktok(ctx):
+    '''
+    Posts a random tiktok from sourcebot's collection.
+    '''
+    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    tiktok = client['sourcebot']['tiktok_db'].aggregate([{ "$sample": { "size": 1 } }]).next()
+
+    if tiktok['size'] > 8388608: # 8M
+        await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
+    else:
+        with open(f"{config['media']['path']}/tiktok-{tiktok['tiktok_id']}.mp4", 'rb') as file:
+            await ctx.respond(file=discord.File(file, filename=f"tiktok-{tiktok['tiktok_id']}.mp4"))
+
+
+@bot.slash_command(guild_ids = config['discord']['guild_ids'], name='list')
+@has_permissions(administrator=True)
 async def _list(ctx):
     '''
-    command: list reaction roles
+    Returns current list of roles configured for sourcebot.
     '''
     embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
 
     for emoji in roles_settings['roles']:
         embed.add_field(name=emoji, value=f"<@&{roles_settings['roles'][emoji]}>")
 
-    await ctx.send(embed=embed)
+    await ctx.respond(embed=embed)
 
-@bot.command(name='add')
-@commands.has_permissions(administrator=True)
+@bot.slash_command(guild_ids = config['discord']['guild_ids'], name='add')
+@has_permissions(administrator=True)
 async def _add(ctx, emoji: str, *, role: discord.Role):
     '''
-    command: add new reaction role
+    Adds a new role reaction to the sourcebot.
     '''
     print(f"{bot.user.name} added: {emoji} -> {role}")
     roles_settings['roles'][emoji] = role.id
     roles_update()
-    await ctx.send(f"{bot.user.name} added: {emoji} -> {role}")
+    await ctx.respond(f"{bot.user.name} added: {emoji} -> {role}")
 
-@bot.command(name='remove')
-@commands.has_permissions(administrator=True)
+@bot.slash_command(guild_ids = config['discord']['guild_ids'], name = 'remove')
+@has_permissions(administrator=True)
 async def _remove(ctx, emoji: str):
     '''
-    command: remove reaction role
+    Removes a role reaction from sourcebot list.
     '''
     del roles_settings['roles'][emoji]
     roles_update()
-    await ctx.send(f"{bot.user.name} deleted: {emoji}")
+    await ctx.respond(f"{bot.user.name} deleted: {emoji}")
 
 if __name__ == '__main__':
     logging.basicConfig(filename='main.log', format='[%(levelname)s] [%(asctime)s]: %(message)s', level=logging.ERROR)
