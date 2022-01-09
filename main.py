@@ -63,7 +63,7 @@ def tiktok_worker():
             client = MongoClient("mongodb://127.0.0.1/sourcebot")
             try:
                 client['sourcebot']['tiktok_db'].insert_one({
-                    'tiktok_id': tiktok_id,
+                    'tiktok_id': int(tiktok_id),
                     'size': len(data)
                 })
             except DuplicateKeyError:
