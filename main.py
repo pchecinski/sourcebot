@@ -27,7 +27,7 @@ from TikTokApi import TikTokApi
 
 # Local modules
 import handlers
-from config import config, roles_settings, roles_update
+from config import config
 
 # Prepare bot with intents
 intents = discord.Intents.default()
@@ -111,19 +111,25 @@ async def handle_reaction(payload):
     if not channel.name == config['discord']['role_channel']:
         return
 
-    # Remove reaction if it isn't in roles dictionary
-    if not emoji in roles_settings['roles']:
+    # Search for role in mongodb
+    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    result = client['sourcebot']['roles'].find_one({
+        'guild': payload.guild_id,
+        'emoji': emoji
+    })
+
+    # Handle reaction if role was found
+    if result:
+        role = guild.get_role(result['role'])
+        if payload.event_type == 'REACTION_ADD':
+            await member.add_roles(role, reason='emoji_role_add')
+
+        if payload.event_type == 'REACTION_REMOVE':
+            await member.remove_roles(role, reason='emoji_role_remove')
+
+    # Otherwise remove reaction from the message
+    else:
         await message.remove_reaction(payload.emoji, member)
-        return
-
-    # Get role from settings
-    role = guild.get_role(roles_settings['roles'][emoji])
-
-    if payload.event_type == 'REACTION_ADD':
-        await member.add_roles(role, reason='emoji_role_add')
-
-    if payload.event_type == 'REACTION_REMOVE':
-        await member.remove_roles(role, reason='emoji_role_remove')
 
 # Sourcenao
 async def provide_sources(message):
@@ -266,10 +272,9 @@ async def _list(ctx):
     Returns current list of roles configured for sourcebot.
     '''
     embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
-
-    for emoji in roles_settings['roles']:
-        embed.add_field(name=emoji, value=f"<@&{roles_settings['roles'][emoji]}>")
-
+    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    for role in client['sourcebot']['roles'].find({'guild': ctx.guild.id}):
+        embed.add_field(name=role['emoji'], value=f"<@&{role['role']}>")
     await ctx.respond(embed=embed)
 
 @bot.slash_command(guild_ids = config['discord']['guild_ids'], name='add')
@@ -278,9 +283,12 @@ async def _add(ctx, emoji: str, *, role: discord.Role):
     '''
     Adds a new role reaction to the sourcebot.
     '''
-    print(f"{bot.user.name} added: {emoji} -> {role}")
-    roles_settings['roles'][emoji] = role.id
-    roles_update()
+    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    client['sourcebot']['roles'].insert_one({
+        'guild': ctx.guild.id,
+        'emoji': emoji,
+        'role': role.id
+    })
     await ctx.respond(f"{bot.user.name} added: {emoji} -> {role}")
 
 @bot.slash_command(guild_ids = config['discord']['guild_ids'], name = 'remove')
@@ -289,8 +297,11 @@ async def _remove(ctx, emoji: str):
     '''
     Removes a role reaction from sourcebot list.
     '''
-    del roles_settings['roles'][emoji]
-    roles_update()
+    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    client['sourcebot']['roles'].delete_one({
+        'guild': ctx.guild.id,
+        'emoji': emoji
+    })
     await ctx.respond(f"{bot.user.name} deleted: {emoji}")
 
 if __name__ == '__main__':
