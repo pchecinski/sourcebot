@@ -20,6 +20,7 @@ import faapi
 import xmltodict
 import youtube_dl
 from aiohttp import ClientSession, BasicAuth
+from pymongo import MongoClient
 
 # Local modules
 from config import config
@@ -294,40 +295,20 @@ async def baraag(submission_id):
     embed.set_image(url=data['media_attachments'][0]['url'])
     return { 'embed': embed }
 
-async def twitter(submission_id):
+async def twitter_ffmpeg(submission_id, tweet_type):
     '''
-    Hander for twitter.com
+    Helper for twitter functionality, downloading twitter gifs & videos
     '''
     # Tweet ID from URL
     tweet_id = submission_id.split('/')[-1]
-    async with ClientSession() as session:
-        session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
-        async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url&tweet.fields=possibly_sensitive") as response:
-            tweet_data = await response.json()
 
-            if 'includes' not in tweet_data:
-                return
-
-            if tweet_data['includes']['media'][0]['type'] != 'video' and tweet_data['includes']['media'][0]['type'] != 'animated_gif':
-                if tweet_data['data']['possibly_sensitive']:
-                    # Parse and embed all files
-                    embeds = []
-                    for index, file in enumerate(tweet_data['includes']['media']):
-                        embed = discord.Embed(title=f"Picture {index + 1}/{len(tweet_data['includes']['media'])} by {tweet_data['includes']['users'][0]['username']}", color=discord.Color(0x1DA1F2))
-                        embed.set_image(url=file['url'])
-                        embeds.append(embed)
-                    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
-
-                return
-
-    # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
         with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
             meta = ydl.extract_info(f"https://twitter.com/{submission_id}")
             filename = f"{tweet_id}.{meta['ext']}"
 
             # Convert Animated GIFs to .gif so they loop in Discord
-            if tweet_data['includes']['media'][0]['type'] == 'animated_gif':
+            if tweet_type == 'animated_gif':
                 args = shlex.split(
                     f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} "
                     "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
@@ -343,6 +324,34 @@ async def twitter(submission_id):
 
             with open(f"{tmpdir}/{filename}", 'rb') as file:
                 return { 'file': discord.File(file, filename=filename) }
+
+async def twitter(submission_id):
+    '''
+    Hander for twitter.com
+    '''
+     # Tweet ID from URL
+    tweet_id = submission_id.split('/')[-1]
+    async with ClientSession() as session:
+        session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
+        async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url&tweet.fields=possibly_sensitive") as response:
+            tweet_data = await response.json()
+
+            if 'includes' not in tweet_data:
+                return
+
+            if tweet_data['includes']['media'][0]['type'] == 'video' or tweet_data['includes']['media'][0]['type'] == 'animated_gif':
+                return await twitter_ffmpeg(submission_id, tweet_data['includes']['media'][0]['type'])
+
+            client = MongoClient("mongodb://127.0.0.1/sourcebot")
+            if client['sourcebot']['twitter_artists'].find_one({'author_id': int(tweet_data['data']['author_id'])}):
+                # Parse and embed all files for whitelisted artists
+                embeds = []
+                for index, file in enumerate(tweet_data['includes']['media']):
+                    embed = discord.Embed(title=f"Picture {index + 1}/{len(tweet_data['includes']['media'])} by {tweet_data['includes']['users'][0]['username']}", color=discord.Color(0x1DA1F2))
+                    embed.set_image(url=file['url'])
+                    embeds.append(embed)
+                return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
+
 
 async def youtube(video_id):
     '''
