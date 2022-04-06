@@ -129,7 +129,9 @@ async def pixiv(submission_id):
                     files.append(discord.File(io.BytesIO(await response.read()), filename=f"{submission_id}_{index}.{ext}"))
                     embed.set_image(url=f"attachment://{submission_id}_{index}.{ext}")
                     embeds.append(embed)
-    return { 'embeds': embeds[:10], 'files': files[:10] }
+
+    # Parse and embed all files
+    return [ { 'embeds': embeds[i:i+10], 'files': files[i:i+10] } for i in range(0, len(embeds), 10) ]
 
 async def inkbunny(submission_id):
     '''
@@ -240,6 +242,18 @@ async def rule34xxx(submission_id):
     embed.set_image(url=data['posts']['post']['@file_url'])
     return { 'embed': embed }
 
+async def gelbooru(submission_id):
+    '''
+    Hander for gelbooru.com
+    '''
+    async with ClientSession() as session:
+        async with session.get(f"https://gelbooru.com/index.php?page=dapi&s=post&q=index&id={submission_id}") as response:
+            data = xmltodict.parse(await response.text())
+
+    embed = discord.Embed(color=discord.Color(0xABE5A4))
+    embed.set_image(url=data['posts']['post']['file_url'])
+    return { 'embed': embed }
+
 async def pawoo(submission_id):
     '''
     Hander for pawoo.net
@@ -288,13 +302,22 @@ async def twitter(submission_id):
     tweet_id = submission_id.split('/')[-1]
     async with ClientSession() as session:
         session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
-        async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys&media.fields=type") as response:
+        async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url&tweet.fields=possibly_sensitive") as response:
             tweet_data = await response.json()
 
             if 'includes' not in tweet_data:
                 return
 
             if tweet_data['includes']['media'][0]['type'] != 'video' and tweet_data['includes']['media'][0]['type'] != 'animated_gif':
+                if tweet_data['data']['possibly_sensitive']:
+                    # Parse and embed all files
+                    embeds = []
+                    for index, file in enumerate(tweet_data['includes']['media']):
+                        embed = discord.Embed(title=f"Picture {index + 1}/{len(tweet_data['includes']['media'])} by {tweet_data['includes']['users'][0]['username']}", color=discord.Color(0x1DA1F2))
+                        embed.set_image(url=file['url'])
+                        embeds.append(embed)
+                    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
+
                 return
 
     # Download video to temporary directory

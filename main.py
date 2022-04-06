@@ -158,18 +158,16 @@ async def provide_sources(message):
 
 # Parser regular expressions list
 parsers = [
-    { 'pattern': re.compile(r"(?<=https://www.pixiv.net/en/artworks/)(\w+)"), 'function': handlers.pixiv },
+    { 'pattern': re.compile(r"(?:pixiv\.net[\/\w]*)\/artworks\/(\w+)"), 'function': handlers.pixiv },
     { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)"), 'function': handlers.inkbunny },
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
     { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handlers.e621 },
     { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools },
     { 'pattern': re.compile(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handlers.rule34xxx },
-    { 'pattern': re.compile(r"(?<=https://pawoo.net/web/statuses/)(\w+)"), 'function': handlers.pawoo },
-    { 'pattern': re.compile(r"(?<=https://pawoo.net/)@\w+/(\w+)"), 'function': handlers.pawoo },
-    { 'pattern': re.compile(r"(?<=https://baraag.net/web/statuses/)(\w+)"), 'function': handlers.baraag },
-    { 'pattern': re.compile(r"(?<=https://baraag.net/)@\w+/(\w+)"), 'function': handlers.baraag },
-    { 'pattern': re.compile(r"(?<=https://twitter.com/)(\w+/status/\w+)"), 'function': handlers.twitter },
-    { 'pattern': re.compile(r"(?<=https://fxtwitter.com/)(\w+/status/\w+)"), 'function': handlers.twitter },
+    { 'pattern': re.compile(r"(?<=https://gelbooru.com/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handlers.gelbooru },
+    { 'pattern': re.compile(r"(?:pawoo.net\/@\w+|pawoo.net\/web\/statuses)\/(\w+)"), 'function': handlers.pawoo },
+    { 'pattern': re.compile(r"(?:baraag.net\/@\w+|baraag.net\/web\/statuses)\/(\w+)"), 'function': handlers.baraag },
+    { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube }
 ]
 
@@ -204,7 +202,7 @@ async def on_message(message):
         # Parse short url with HTTP HEAD + redirects
         async with ClientSession() as session:
             session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'
             })
             async with session.head(short_url, allow_redirects=True) as response:
                 url = str(response.url).split('?')[0] # remove all the junk in query data
@@ -249,7 +247,13 @@ async def on_raw_reaction_remove(payload):
     '''
     await handle_reaction(payload)
 
-# Commands
+# Message commands
+@bot.message_command(guild_ids = config['discord']['guild_ids'], name='Retry..')
+async def _parse(ctx, message):
+    await ctx.respond('Processing this message again, please give me a second..', ephemeral=True)
+    await on_message(message)
+
+# Various Commands
 @bot.slash_command(guild_ids = config['discord']['guild_ids'], name='tiktok')
 async def _tiktok(ctx):
     '''
@@ -257,14 +261,9 @@ async def _tiktok(ctx):
     '''
     client = MongoClient("mongodb://127.0.0.1/sourcebot")
     tiktok = client['sourcebot']['tiktok_db'].aggregate([{ "$sample": { "size": 1 } }]).next()
+    await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
 
-    if tiktok['size'] > 8388608: # 8M
-        await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
-    else:
-        with open(f"{config['media']['path']}/tiktok-{tiktok['tiktok_id']}.mp4", 'rb') as file:
-            await ctx.respond(file=discord.File(file, filename=f"tiktok-{tiktok['tiktok_id']}.mp4"))
-
-
+# Roles commands
 @bot.slash_command(guild_ids = config['discord']['guild_ids'], name='list')
 @has_permissions(administrator=True)
 async def _list(ctx):
