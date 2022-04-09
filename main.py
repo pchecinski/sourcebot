@@ -107,33 +107,6 @@ async def handle_reaction(payload):
         await message.delete()
         return
 
-    # Whitelist twitter artist on "wrench" emoji
-    if payload.event_type == 'REACTION_ADD' and emoji == '🔧':
-        for match in re.finditer(r"(?:twitter.com\/)(\w+\/status\/\w+)", message.content):
-            # Tweet ID from URL
-            tweet_id = match.group(1).split('/')[-1]
-            async with ClientSession() as session:
-                session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
-                async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url") as response:
-                    tweet_data = await response.json()
-
-            client = MongoClient("mongodb://127.0.0.1/sourcebot")
-            try:
-                client['sourcebot']['twitter_artists'].insert_one({
-                    'author_id': int(tweet_data['includes']['users'][0]['id']),
-                    'username': tweet_data['includes']['users'][0]['username']
-                })
-            except DuplicateKeyError:
-                pass
-
-            output = await handlers.twitter(match.group(1))
-            if isinstance(output, list):
-                for kwargs in output:
-                    await message.channel.send(**kwargs)
-            elif output:
-                await message.channel.send(**output)
-
-
     # Check if reaction was added/removed in the right channel
     if not channel.name == config['discord']['role_channel']:
         return
@@ -250,10 +223,14 @@ async def on_message(message):
             await provide_sources(message)
             return
 
+        if not message.embeds:
+            await asyncio.sleep(3)
+            message = await message.channel.fetch_message(message.id)
+
         # Match and run all supported handers
         for parser in parsers:
             for match in re.finditer(parser['pattern'], content):
-                output = await parser['function'](match.group(1))
+                output = await parser['function'](match.group(1), embeds=len(message.embeds))
                 if isinstance(output, list):
                     for kwargs in output:
                         await message.channel.send(**kwargs)

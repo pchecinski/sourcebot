@@ -20,13 +20,12 @@ import faapi
 import xmltodict
 import youtube_dl
 from aiohttp import ClientSession, BasicAuth
-from pymongo import MongoClient
 
 # Local modules
 from config import config
 
 # Source fetching
-async def pixiv(submission_id):
+async def pixiv(submission_id, /, **kwargs):
     '''
     Hander for pixiv.net
     '''
@@ -134,7 +133,7 @@ async def pixiv(submission_id):
     # Parse and embed all files
     return [ { 'embeds': embeds[i:i+10], 'files': files[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def inkbunny(submission_id):
+async def inkbunny(submission_id, /, **kwargs):
     '''
     Hander for inkbunny.net
     '''
@@ -161,7 +160,7 @@ async def inkbunny(submission_id):
         embeds.append(embed)
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def e621(submission_id):
+async def e621(submission_id, /, **kwargs):
     '''
     Hander for e621.net
     '''
@@ -183,7 +182,7 @@ async def e621(submission_id):
     embed.set_image(url=post['sample']['url'])
     return { 'embed': embed }
 
-async def e621_pools(pool_id):
+async def e621_pools(pool_id, /, **kwargs):
     '''
     Hander for e621.net pools (galleries)
     '''
@@ -212,7 +211,7 @@ async def e621_pools(pool_id):
 
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def furaffinity(submission_id):
+async def furaffinity(submission_id, /, **kwargs):
     '''
     Hander for furaffinity.net
     '''
@@ -231,7 +230,7 @@ async def furaffinity(submission_id):
     embed.set_image(url=submission.file_url)
     return { 'embed': embed }
 
-async def rule34xxx(submission_id):
+async def rule34xxx(submission_id, /, **kwargs):
     '''
     Hander for rule34.xxx
     '''
@@ -243,7 +242,7 @@ async def rule34xxx(submission_id):
     embed.set_image(url=data['posts']['post']['@file_url'])
     return { 'embed': embed }
 
-async def gelbooru(submission_id):
+async def gelbooru(submission_id, /, **kwargs):
     '''
     Hander for gelbooru.com
     '''
@@ -255,7 +254,7 @@ async def gelbooru(submission_id):
     embed.set_image(url=data['posts']['post']['file_url'])
     return { 'embed': embed }
 
-async def pawoo(submission_id):
+async def pawoo(submission_id, /, **kwargs):
     '''
     Hander for pawoo.net
     '''
@@ -275,7 +274,7 @@ async def pawoo(submission_id):
     embed.set_image(url=data['media_attachments'][0]['url'])
     return { 'embed': embed }
 
-async def baraag(submission_id):
+async def baraag(submission_id, /, **kwargs):
     '''
     Hander for baraag.net
     '''
@@ -325,7 +324,7 @@ async def twitter_ffmpeg(submission_id, tweet_type):
             with open(f"{tmpdir}/{filename}", 'rb') as file:
                 return { 'file': discord.File(file, filename=filename) }
 
-async def twitter(submission_id):
+async def twitter(submission_id, /, **kwargs):
     '''
     Hander for twitter.com
     '''
@@ -342,9 +341,7 @@ async def twitter(submission_id):
             if tweet_data['includes']['media'][0]['type'] == 'video' or tweet_data['includes']['media'][0]['type'] == 'animated_gif':
                 return await twitter_ffmpeg(submission_id, tweet_data['includes']['media'][0]['type'])
 
-            client = MongoClient("mongodb://127.0.0.1/sourcebot")
-            if client['sourcebot']['twitter_artists'].find_one({'author_id': int(tweet_data['data']['author_id'])}):
-                # Parse and embed all files for whitelisted artists
+            if kwargs['embeds'] == 0:
                 embeds = []
                 for index, file in enumerate(tweet_data['includes']['media']):
                     embed = discord.Embed(title=f"Picture {index + 1}/{len(tweet_data['includes']['media'])} by {tweet_data['includes']['users'][0]['username']}", color=discord.Color(0x1DA1F2))
