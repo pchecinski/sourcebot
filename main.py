@@ -224,7 +224,7 @@ async def on_message(message):
             return
 
         if not message.embeds:
-            await asyncio.sleep(3)
+            await asyncio.sleep(1)
             message = await message.channel.fetch_message(message.id)
 
         # Match and run all supported handers
