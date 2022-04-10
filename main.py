@@ -126,31 +126,6 @@ async def handle_reaction(payload):
     else:
         await message.remove_reaction(payload.emoji, member)
 
-# Sourcenao
-async def provide_sources(message):
-    '''
-    SauceNao fetcher (quite messy!)
-    '''
-    sauce = SauceNao(config['saucenao']['token'])
-    sources = []
-
-    for attachment in message.attachments:
-        results = sauce.from_url(attachment.url)
-
-        if not results or results[0].similarity < 80:
-            continue
-
-        try:
-            sources.append(f"<{results[0].urls[0]}>")
-        except IndexError:
-            pprint(f"{attachment.url}, {results}")
-
-    if len(sources) == 0:
-        return
-
-    source_urls = '\n'.join(sources)
-    await message.reply(f"Source(s):\n{source_urls}")
-
 # Parser regular expressions list
 parsers = [
     { 'pattern': re.compile(r"(?:pixiv\.net[\/\w]*)\/artworks\/(\w+)"), 'function': handlers.pixiv },
@@ -205,12 +180,6 @@ async def on_message(message):
         # Add task to tiktok queue
         tiktok_queue.put_nowait((message, url))
 
-    # # Source providing service handlers
-    # if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
-    #     if len(message.attachments) > 0:
-    #         await provide_sources(message)
-    #         return
-
     # Detect if message has embeds before lookups
     if not message.embeds:
         await asyncio.sleep(2.5)
@@ -248,10 +217,34 @@ async def on_raw_reaction_remove(payload):
     await handle_reaction(payload)
 
 # Message commands
-@bot.message_command(guild_ids = config['discord']['guild_ids'], name='Retry..')
+@bot.message_command(guild_ids = config['discord']['guild_ids'], name='Retry parsing')
 async def _parse(ctx, message):
     await ctx.respond('Processing this message again, please give me a second..', ephemeral=True)
     await on_message(message)
+
+@bot.message_command(guild_ids = config['discord']['guild_ids'], name='Look for the source')
+async def _source(ctx, message):
+    # Source providing service handlers
+    if len(message.attachments) > 0:
+        sauce = SauceNao(config['saucenao']['token'])
+        sources = []
+
+        for attachment in message.attachments:
+            results = sauce.from_url(attachment.url)
+
+            if not results or results[0].similarity < 80:
+                continue
+
+            try:
+                sources.append(f"<{results[0].urls[0]}>")
+            except IndexError:
+                pprint(f"{attachment.url}, {results}")
+
+        # if len(sources) == 0:
+        #     return
+
+        source_urls = '\n'.join(sources)
+        await ctx.respond(f"Source(s):\n{source_urls}")
 
 # Various Commands
 @bot.slash_command(guild_ids = config['discord']['guild_ids'], name='tiktok')
