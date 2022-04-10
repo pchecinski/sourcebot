@@ -17,7 +17,6 @@ from pprint import pprint
 
 # Third-party libraries
 import discord
-import magic
 from aiohttp import ClientSession
 from discord.ext.commands import has_permissions
 from pymongo import MongoClient
@@ -52,27 +51,23 @@ def tiktok_worker():
 
         api = TikTokApi.get_instance(custom_did="".join(random.choices(string.digits, k=19)))
         data = api.get_video_by_url(url)
-        mime = magic.from_buffer(io.BytesIO(data).read(2048), mime=True)
 
-        if not data or mime != 'video/mp4':
-            coro = message.add_reaction('<:boterror:854665168889184256>')
+        with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
+            file.write(data)
+
+        client = MongoClient("mongodb://127.0.0.1/sourcebot")
+        try:
+            client['sourcebot']['tiktok_db'].insert_one({
+                'tiktok_id': int(tiktok_id),
+                'size': len(data)
+            })
+        except DuplicateKeyError:
+            pass
+
+        if len(data) > 8388608: # 8M
+            coro = message.channel.send(f"{config['media']['url']}/tiktok-{tiktok_id}.mp4")
         else:
-            with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
-                file.write(data)
-
-            client = MongoClient("mongodb://127.0.0.1/sourcebot")
-            try:
-                client['sourcebot']['tiktok_db'].insert_one({
-                    'tiktok_id': int(tiktok_id),
-                    'size': len(data)
-                })
-            except DuplicateKeyError:
-                pass
-
-            if len(data) > 8388608: # 8M
-                coro = message.channel.send(f"{config['media']['url']}/tiktok-{tiktok_id}.mp4")
-            else:
-                coro = message.channel.send(file=discord.File(io.BytesIO(data), filename=f"tiktok-{tiktok_id}.mp4"))
+            coro = message.channel.send(file=discord.File(io.BytesIO(data), filename=f"tiktok-{tiktok_id}.mp4"))
 
         # Run async task on the bot thread
         task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
