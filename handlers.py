@@ -328,7 +328,7 @@ async def twitter(submission_id, /, **kwargs):
     '''
     Hander for twitter.com
     '''
-     # Tweet ID from URL
+    # Tweet ID from URL
     tweet_id = submission_id.split('/')[-1]
     async with ClientSession() as session:
         session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
@@ -349,11 +349,14 @@ async def twitter(submission_id, /, **kwargs):
                     embeds.append(embed)
                 return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
+async def youtube(video_id, /, **kwargs):
+    '''
+    Youtube downloading via url
+    '''
+    # Only trigger this for direct messages
+    if not kwargs['is_dm']:
+        return
 
-async def youtube(video_id):
-    '''
-    youtube downloading via url
-    '''
     # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
         with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video_id}.%(ext)s"}) as ydl:
@@ -367,7 +370,7 @@ async def youtube(video_id):
             with open(f"{tmpdir}/{filename}", 'rb') as file:
                 return { 'file': discord.File(file, filename=filename) }
 
-# File converter
+# Video files converter
 async def convert(filename, url):
     '''
     ffmpeg media converter for .mp4 and .webm

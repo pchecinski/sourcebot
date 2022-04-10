@@ -184,13 +184,6 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    if isinstance(message.channel, discord.DMChannel) and message.attachments:
-        for attachment in message.attachments:
-            if attachment.filename.endswith('mp4'):
-                kwargs = await handlers.convert(attachment.filename, attachment.url)
-                await message.channel.send(**kwargs)
-        return
-
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
 
@@ -217,25 +210,33 @@ async def on_message(message):
         # Add task to tiktok queue
         tiktok_queue.put_nowait((message, url))
 
-    # Source providing service handlers
-    if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
-        if len(message.attachments) > 0:
-            await provide_sources(message)
-            return
+    # # Source providing service handlers
+    # if message.channel.id in config['discord']['art_channels'] or isinstance(message.channel, discord.DMChannel):
+    #     if len(message.attachments) > 0:
+    #         await provide_sources(message)
+    #         return
 
-        if not message.embeds:
-            await asyncio.sleep(1)
-            message = await message.channel.fetch_message(message.id)
+    # Detect if message has embeds before lookups
+    if not message.embeds:
+        await asyncio.sleep(2.5)
+        message = await message.channel.fetch_message(message.id)
 
-        # Match and run all supported handers
-        for parser in parsers:
-            for match in re.finditer(parser['pattern'], content):
-                output = await parser['function'](match.group(1), embeds=len(message.embeds))
-                if isinstance(output, list):
-                    for kwargs in output:
-                        await message.channel.send(**kwargs)
-                elif output:
-                    await message.channel.send(**output)
+    # Match and run all supported handers
+    for parser in parsers:
+        for match in re.finditer(parser['pattern'], content):
+            output = await parser['function'](match.group(1), embeds=len(message.embeds), is_dm=isinstance(message.channel, discord.DMChannel))
+            if isinstance(output, list):
+                for kwargs in output:
+                    await message.channel.send(**kwargs)
+            elif output:
+                await message.channel.send(**output)
+
+    # Video conversion functionality
+    if isinstance(message.channel, discord.DMChannel) and message.attachments:
+        for attachment in message.attachments:
+            if attachment.filename.endswith('mp4'):
+                kwargs = await handlers.convert(attachment.filename, attachment.url)
+                await message.channel.send(**kwargs)
 
 @bot.event
 async def on_raw_reaction_add(payload):
