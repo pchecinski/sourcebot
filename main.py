@@ -38,7 +38,7 @@ bot = discord.Bot(intents=intents)
 tiktok_queue = queue.Queue()
 
 # Spoiler regular expression
-spoiler_regex = re.compile(r"\|\|(.*?)\|\|", re.DOTALL)
+spoiler_regex = re.compile(r"(\|\|.*?\|\||\<.*?\>)", re.DOTALL)
 
 def tiktok_worker():
     '''
@@ -188,6 +188,7 @@ async def on_message(message):
     # Match and run all supported handers
     for parser in parsers:
         for match in re.finditer(parser['pattern'], content):
+            print(f"[debug]: {parser['function'].__name__} -> {match.group(1)}")
             output = await parser['function'](match.group(1), embeds=len(message.embeds), is_dm=isinstance(message.channel, discord.DMChannel))
             if isinstance(output, list):
                 for kwargs in output:
