@@ -12,10 +12,10 @@ from pprint import pprint
 
 # Third-party libraries
 import discord
+from discord.errors import NotFound
 from discord.ext.commands import has_permissions
 from pymongo import MongoClient
 from saucenao_api import SauceNao
-from TikTokApi import TikTokApi
 
 # Local modules
 import handlers
@@ -98,7 +98,7 @@ parsers = [
     { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"((?:https:\/\/vm.tiktok.com\/|https:\/\/www.tiktok.com\/t\/)\w+)"), 'function': handlers.tiktok },
-    { 'pattern': re.compile(r"(?:https:\/\/www.tiktok.com\/)(@\w+\/video\/\w+)"), 'function': handlers.tiktok }
+    { 'pattern': re.compile(r"(https:\/\/www.tiktok.com\/@\w+\/video\/\w+)"), 'function': handlers.tiktok }
 ]
 
 @bot.event
@@ -115,7 +115,11 @@ async def on_message(message):
     # Detect if message has embeds before lookups
     if not message.embeds:
         await asyncio.sleep(2.5)
-        message = await message.channel.fetch_message(message.id)
+        try:
+            message = await message.channel.fetch_message(message.id)
+        except NotFound:
+            # Skip further parsing on immediately deleted messages
+            return
 
     # Match and run all supported handers
     for parser in parsers:

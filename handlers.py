@@ -355,28 +355,7 @@ async def twitter(submission_id, /, **kwargs):
                     embeds.append(embed)
                 return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def youtube(video_id, /, **kwargs):
-    '''
-    Youtube downloading via url
-    '''
-    # Only trigger this for direct messages
-    if not kwargs['is_dm']:
-        return
-
-    # Download video to temporary directory
-    with TemporaryDirectory() as tmpdir:
-        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video_id}.%(ext)s"}) as ydl:
-            meta = ydl.extract_info(f"https://youtube.com/watch?v={video_id}")
-            filename = f"{video_id}.{meta['ext']}"
-
-            if os.stat(f"{tmpdir}/{filename}").st_size > 8388608: # 8M
-                os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
-                return { 'content': f"{config['media']['url']}/youtube-{filename}"}
-
-            with open(f"{tmpdir}/{filename}", 'rb') as file:
-                return { 'file': discord.File(file, filename=filename) }
-
-async def tiktok(url, /, **kwargs): 
+async def tiktok(url, /, **kwargs):
     '''
     Handler for tiktok
     '''
@@ -403,8 +382,25 @@ async def tiktok(url, /, **kwargs):
                 })
 
         return { 'content': f"{config['media']['url']}/tiktok-{video.id}.mp4" }
-    except Exception:
-        print('failed')
+    except Exception as exc:
+        print('failed', exc)
+
+async def youtube(video_id, /, **kwargs):
+    '''
+    Youtube downloading via url
+    '''
+    # Only trigger this for direct messages
+    if not kwargs['is_dm']:
+        return
+
+    # Download video to temporary directory
+    with TemporaryDirectory() as tmpdir:
+        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video_id}.%(ext)s"}) as ydl:
+            meta = ydl.extract_info(f"https://youtube.com/watch?v={video_id}")
+            filename = f"{video_id}.{meta['ext']}"
+
+            os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
+            return { 'content': f"{config['media']['url']}/youtube-{filename}"}
 
 
 # Video files converter
