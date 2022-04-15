@@ -17,12 +17,18 @@ from zipfile import ZipFile
 import aiofiles
 import discord
 import faapi
+import nest_asyncio
 import xmltodict
 import youtube_dl
 from aiohttp import ClientSession, BasicAuth
+from pymongo import MongoClient
+from TikTokApi import TikTokApi
 
 # Local modules
 from config import config
+
+# Enable nested asyncio calls for Tiktok
+nest_asyncio.apply()
 
 # Source fetching
 async def pixiv(submission_id, /, **kwargs):
@@ -369,6 +375,37 @@ async def youtube(video_id, /, **kwargs):
 
             with open(f"{tmpdir}/{filename}", 'rb') as file:
                 return { 'file': discord.File(file, filename=filename) }
+
+async def tiktok(url, /, **kwargs): 
+    '''
+    Handler for tiktok
+    '''
+    try:
+        with TikTokApi() as api:
+            video = api.video(url=url)
+
+            print(url)
+
+            # Prepare mongodb connection
+            client = MongoClient("mongodb://127.0.0.1/sourcebot")
+            cached_data = client['sourcebot']['tiktok_db'].find_one({
+                'tiktok_id': int(video.id)
+            })
+
+            # Cache information about fetched video
+            if not cached_data:
+                with open(f"{config['media']['path']}/tiktok-{video.id}.mp4", 'wb') as file:
+                    file.write(video.bytes())
+
+                client['sourcebot']['tiktok_db'].insert_one({
+                    'tiktok_id': int(video.id),
+                    'size': len(video.bytes())
+                })
+
+        return { 'content': f"{config['media']['url']}/tiktok-{video.id}.mp4" }
+    except Exception:
+        print('failed')
+
 
 # Video files converter
 async def convert(filename, url):

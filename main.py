@@ -6,21 +6,14 @@ Main source code / entry point for sourcebot
 
 # Python standard libraries
 import asyncio
-import io
-import logging
 import queue
-import random
 import re
-import string
-import threading
 from pprint import pprint
 
 # Third-party libraries
 import discord
-from aiohttp import ClientSession
 from discord.ext.commands import has_permissions
 from pymongo import MongoClient
-from pymongo.errors import DuplicateKeyError
 from saucenao_api import SauceNao
 from TikTokApi import TikTokApi
 
@@ -39,41 +32,6 @@ tiktok_queue = queue.Queue()
 
 # Spoiler regular expression
 spoiler_regex = re.compile(r"(\|\|.*?\|\||\<.*?\>)", re.DOTALL)
-
-def tiktok_worker():
-    '''
-    Tiktok converter thread
-    '''
-    while True:
-        # Get a task from queue
-        message, url = tiktok_queue.get()
-        tiktok_id = url.split('/')[-1]
-
-        api = TikTokApi.get_instance(custom_did="".join(random.choices(string.digits, k=19)))
-        data = api.get_video_by_url(url)
-
-        with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
-            file.write(data)
-
-        client = MongoClient("mongodb://127.0.0.1/sourcebot")
-        try:
-            client['sourcebot']['tiktok_db'].insert_one({
-                'tiktok_id': int(tiktok_id),
-                'size': len(data)
-            })
-        except DuplicateKeyError:
-            pass
-
-        if len(data) > 8388608: # 8M
-            coro = message.channel.send(f"{config['media']['url']}/tiktok-{tiktok_id}.mp4")
-        else:
-            coro = message.channel.send(file=discord.File(io.BytesIO(data), filename=f"tiktok-{tiktok_id}.mp4"))
-
-        # Run async task on the bot thread
-        task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
-        task.result()
-
-        tiktok_queue.task_done()
 
 # Role reactions
 async def handle_reaction(payload):
@@ -138,13 +96,10 @@ parsers = [
     { 'pattern': re.compile(r"(?:pawoo.net\/@\w+|pawoo.net\/web\/statuses)\/(\w+)"), 'function': handlers.pawoo },
     { 'pattern': re.compile(r"(?:baraag.net\/@\w+|baraag.net\/web\/statuses)\/(\w+)"), 'function': handlers.baraag },
     { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
-    { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube }
+    { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
+    { 'pattern': re.compile(r"((?:https:\/\/vm.tiktok.com\/|https:\/\/www.tiktok.com\/t\/)\w+)"), 'function': handlers.tiktok },
+    { 'pattern': re.compile(r"(?:https:\/\/www.tiktok.com\/)(@\w+\/video\/\w+)"), 'function': handlers.tiktok }
 ]
-
-tiktok_patterns = {
-    'short': re.compile(r"(?:https:\/\/vm.tiktok.com\/|https:\/\/www.tiktok.com\/t\/)(\w+)"),
-    'long': re.compile(r"(?:https:\/\/www.tiktok.com\/)(@\w+\/video\/\w+)")
-}
 
 @bot.event
 async def on_message(message):
@@ -156,29 +111,6 @@ async def on_message(message):
 
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
-
-    # Post tiktok videos
-    for match in re.finditer(tiktok_patterns['short'], content):
-        # Support for short url (mobile links)
-        short_url = 'https://vm.tiktok.com/' + match.group(1)
-
-        # Parse short url with HTTP HEAD + redirects
-        async with ClientSession() as session:
-            session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'
-            })
-            async with session.head(short_url, allow_redirects=True) as response:
-                url = str(response.url).split('?')[0] # remove all the junk in query data
-
-        # Add task to tiktok queue
-        tiktok_queue.put_nowait((message, url))
-
-    for match in re.finditer(tiktok_patterns['long'], content):
-        # Support for long url (browser links)
-        url = 'https://www.tiktok.com/' + match.group(1)
-
-        # Add task to tiktok queue
-        tiktok_queue.put_nowait((message, url))
 
     # Detect if message has embeds before lookups
     if not message.embeds:
@@ -298,10 +230,5 @@ async def _remove(ctx, emoji: str):
     await ctx.respond(f"{bot.user.name} deleted: {emoji}")
 
 if __name__ == '__main__':
-    logging.basicConfig(filename='main.log', format='[%(levelname)s] [%(asctime)s]: %(message)s', level=logging.ERROR)
-
-    # Start tiktok thread
-    threading.Thread(target=tiktok_worker, daemon=True).start()
-
     # Main Loop
     bot.run(config['discord']['token'])
