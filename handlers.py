@@ -260,6 +260,19 @@ async def gelbooru(submission_id, /, **kwargs):
     embed.set_image(url=data['posts']['post']['file_url'])
     return { 'embed': embed }
 
+async def deviantart(url, /, **kwargs):
+    '''
+    Handler for deviantart.com
+    '''
+    if kwargs['embeds'] == 0:
+        async with ClientSession() as session:
+            async with session.get(f"https://backend.deviantart.com/oembed?url={url}") as response:
+                data = await response.json()
+
+        embed = discord.Embed(color=discord.Color(0xABE5A4))
+        embed.set_image(url=data['url'])
+        return { 'embed': embed }
+
 async def pawoo(submission_id, /, **kwargs):
     '''
     Hander for pawoo.net
