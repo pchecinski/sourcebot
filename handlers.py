@@ -351,7 +351,7 @@ async def twitter(submission_id, /, **kwargs):
     tweet_id = submission_id.split('/')[-1]
     async with ClientSession() as session:
         session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
-        async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url&tweet.fields=possibly_sensitive") as response:
+        async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url") as response:
             tweet_data = await response.json()
 
             if 'includes' not in tweet_data:
@@ -361,9 +361,10 @@ async def twitter(submission_id, /, **kwargs):
                 return await twitter_ffmpeg(submission_id, tweet_data['includes']['media'][0]['type'])
 
             if kwargs['embeds'] == 0:
+                username = tweet_data['includes']['users'][0]['username']
                 embeds = []
                 for index, file in enumerate(tweet_data['includes']['media']):
-                    embed = discord.Embed(title=f"Picture {index + 1}/{len(tweet_data['includes']['media'])} by {tweet_data['includes']['users'][0]['username']}", color=discord.Color(0x1DA1F2))
+                    embed = discord.Embed(title=f"Picture {index + 1}/{len(tweet_data['includes']['media'])} by {username}", color=discord.Color(0x1DA1F2))
                     embed.set_image(url=file['url'])
                     embeds.append(embed)
                 return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]

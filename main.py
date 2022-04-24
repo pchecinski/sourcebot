@@ -96,7 +96,7 @@ parsers = [
     { 'pattern': re.compile(r"(?:pawoo.net\/@\w+|pawoo.net\/web\/statuses)\/(\w+)"), 'function': handlers.pawoo },
     { 'pattern': re.compile(r"(?:baraag.net\/@\w+|baraag.net\/web\/statuses)\/(\w+)"), 'function': handlers.baraag },
     { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
-    { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
+    { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"((?:https:\/\/vm.tiktok.com\/|https:\/\/www.tiktok.com\/t\/)\w+)"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.tiktok.com\/@\w+\/video\/\w+)"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart }
@@ -113,6 +113,28 @@ async def on_message(message):
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
 
+    # Source providing service handlers
+    if message.channel.id in config['discord']['sauce_channels'] and len(message.attachments) > 0:
+        sauce = SauceNao(config['saucenao']['token'])
+        sources = []
+
+        for attachment in message.attachments:
+            results = sauce.from_url(attachment.url)
+
+            if not results or results[0].similarity < 80:
+                continue
+
+            try:
+                sources.append(f"<{results[0].urls[0]}>")
+            except IndexError:
+                pprint(f"{attachment.url}, {results}")
+
+        # if len(sources) == 0:
+        #     return
+
+        source_urls = '\n'.join(sources)
+        await message.channel.send(f"Source(s):\n{source_urls}")
+
     # Detect if message has embeds before lookups
     if not message.embeds:
         await asyncio.sleep(2.5)
@@ -126,7 +148,10 @@ async def on_message(message):
     for parser in parsers:
         for match in re.finditer(parser['pattern'], content):
             print(f"[debug]: {parser['function'].__name__} -> {match.group(1)}")
-            output = await parser['function'](match.group(1), embeds=len(message.embeds), is_dm=isinstance(message.channel, discord.DMChannel))
+            output = await parser['function'](
+                match.group(1), embeds=len(message.embeds),
+                is_dm=isinstance(message.channel, discord.DMChannel)
+            )
             if isinstance(output, list):
                 for kwargs in output:
                     await message.channel.send(**kwargs)
@@ -153,36 +178,6 @@ async def on_raw_reaction_remove(payload):
     Reaction hander (removing reactions)
     '''
     await handle_reaction(payload)
-
-# Message commands
-@bot.message_command(guild_ids = config['discord']['guild_ids'], name='Retry parsing')
-async def _parse(ctx, message):
-    await ctx.respond('Processing this message again, please give me a second..', ephemeral=True)
-    await on_message(message)
-
-@bot.message_command(guild_ids = config['discord']['guild_ids'], name='Look for the source')
-async def _source(ctx, message):
-    # Source providing service handlers
-    if len(message.attachments) > 0:
-        sauce = SauceNao(config['saucenao']['token'])
-        sources = []
-
-        for attachment in message.attachments:
-            results = sauce.from_url(attachment.url)
-
-            if not results or results[0].similarity < 80:
-                continue
-
-            try:
-                sources.append(f"<{results[0].urls[0]}>")
-            except IndexError:
-                pprint(f"{attachment.url}, {results}")
-
-        # if len(sources) == 0:
-        #     return
-
-        source_urls = '\n'.join(sources)
-        await ctx.respond(f"Source(s):\n{source_urls}")
 
 # Various Commands
 @bot.slash_command(guild_ids = config['discord']['guild_ids'], name='tiktok')
