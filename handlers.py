@@ -31,7 +31,7 @@ from config import config
 nest_asyncio.apply()
 
 # Source fetching
-async def pixiv(submission_id, /, **kwargs):
+async def pixiv(**kwargs):
     '''
     Hander for pixiv.net
     '''
@@ -69,18 +69,18 @@ async def pixiv(submission_id, /, **kwargs):
         # Get Illustration details
         async with session.get(
             url = f"{base_url}/v1/illust/detail",
-            params = { "illust_id": submission_id },
+            params = { "illust_id": kwargs['match'] },
         ) as response:
             data = await response.json()
             session.headers.update({
-                "Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={submission_id}"
+                "Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={kwargs['match']}"
             })
 
         if data['illust']['type'] == 'ugoira':
             # Get file metadata (framges and zip_url)
             async with session.get(
                 url = f"{base_url}/v1/ugoira/metadata",
-                params = { "illust_id": submission_id },
+                params = { "illust_id": kwargs['match'] },
             ) as response:
                 metadata = await response.json()
 
@@ -101,7 +101,7 @@ async def pixiv(submission_id, /, **kwargs):
                 args = shlex.split(
                     f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt "
                     "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                    f"{submission_id}.gif"
+                    f"{kwargs['match']}.gif"
                 )
                 ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                 await ffmpeg.wait()
@@ -109,12 +109,12 @@ async def pixiv(submission_id, /, **kwargs):
                 # Prepare attachment file
                 embeds, files = [], []
                 embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
-                if os.stat(f"{tmpdir}/{submission_id}.gif").st_size > 8388608: # 8M
-                    os.rename(f"{tmpdir}/{submission_id}.gif", f"{config['media']['path']}/pixiv-{submission_id}.gif")
-                    embed.set_image(url=f"{config['media']['url']}/pixiv-{submission_id}.gif")
+                if os.stat(f"{tmpdir}/{kwargs['match']}.gif").st_size > 8388608: # 8M
+                    os.rename(f"{tmpdir}/{kwargs['match']}.gif", f"{config['media']['path']}/pixiv-{kwargs['match']}.gif")
+                    embed.set_image(url=f"{config['media']['url']}/pixiv-{kwargs['match']}.gif")
                 else:
-                    files.append(discord.File(f"{tmpdir}/{submission_id}.gif", filename=f"{submission_id}.gif"))
-                    embed.set_image(url=f"attachment://{submission_id}.gif")
+                    files.append(discord.File(f"{tmpdir}/{kwargs['match']}.gif", filename=f"{kwargs['match']}.gif"))
+                    embed.set_image(url=f"attachment://{kwargs['match']}.gif")
                 embeds.append(embed)
         else:
             if data['illust']['meta_single_page']:
@@ -132,14 +132,14 @@ async def pixiv(submission_id, /, **kwargs):
 
                 ext = os.path.splitext(url)[1]
                 async with session.get(url) as response:
-                    files.append(discord.File(io.BytesIO(await response.read()), filename=f"{submission_id}_{index}.{ext}"))
-                    embed.set_image(url=f"attachment://{submission_id}_{index}.{ext}")
+                    files.append(discord.File(io.BytesIO(await response.read()), filename=f"{kwargs['match']}_{index}.{ext}"))
+                    embed.set_image(url=f"attachment://{kwargs['match']}_{index}.{ext}")
                     embeds.append(embed)
 
     # Parse and embed all files
     return [ { 'embeds': embeds[i:i+10], 'files': files[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def inkbunny(submission_id, /, **kwargs):
+async def inkbunny(**kwargs):
     '''
     Hander for inkbunny.net
     '''
@@ -152,7 +152,7 @@ async def inkbunny(submission_id, /, **kwargs):
             session_id = data['sid']
 
         # Request information about the submission
-        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={submission_id}") as response:
+        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&kwargs['match']s={kwargs['match']}") as response:
             data = await response.json()
 
     # Get submission data
@@ -166,7 +166,7 @@ async def inkbunny(submission_id, /, **kwargs):
         embeds.append(embed)
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def e621(submission_id, /, **kwargs):
+async def e621(**kwargs):
     '''
     Hander for e621.net
     '''
@@ -176,7 +176,7 @@ async def e621(submission_id, /, **kwargs):
         })
 
         # Get image data using API Endpoint
-        async with session.get(f"https://e621.net/posts/{submission_id}.json") as response:
+        async with session.get(f"https://e621.net/posts/{kwargs['match']}.json") as response:
             data = await response.json()
             post = data['post']
 
@@ -188,7 +188,7 @@ async def e621(submission_id, /, **kwargs):
     embed.set_image(url=post['sample']['url'])
     return { 'embed': embed }
 
-async def e621_pools(pool_id, /, **kwargs):
+async def e621_pools(**kwargs):
     '''
     Hander for e621.net pools (galleries)
     '''
@@ -200,11 +200,11 @@ async def e621_pools(pool_id, /, **kwargs):
         })
 
         # Get image data using API Endpoint
-        async with session.get(f"https://e621.net/pools/{pool_id}.json") as response:
+        async with session.get(f"https://e621.net/pools/{kwargs['match']}.json") as response:
             pool_data = await response.json()
 
-            for index, submission_id in enumerate(pool_data['post_ids']):
-                async with session.get(f"https://e621.net/posts/{submission_id}.json") as response:
+            for index, kwargs['match'] in enumerate(pool_data['post_ids']):
+                async with session.get(f"https://e621.net/posts/{kwargs['match']}.json") as response:
                     data = await response.json()
                     post = data['post']
 
@@ -217,7 +217,7 @@ async def e621_pools(pool_id, /, **kwargs):
 
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def furaffinity(submission_id, /, **kwargs):
+async def furaffinity(**kwargs):
     '''
     Hander for furaffinity.net
     '''
@@ -227,7 +227,7 @@ async def furaffinity(submission_id, /, **kwargs):
     ]
 
     api = faapi.FAAPI(cookies)
-    submission, _ = api.get_submission(submission_id)
+    submission, _ = api.get_submission(kwargs['match'])
 
     if submission.rating == 'General':
         return
@@ -236,49 +236,49 @@ async def furaffinity(submission_id, /, **kwargs):
     embed.set_image(url=submission.file_url)
     return { 'embed': embed }
 
-async def rule34xxx(submission_id, /, **kwargs):
+async def rule34xxx(**kwargs):
     '''
     Hander for rule34.xxx
     '''
     async with ClientSession() as session:
-        async with session.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={submission_id}") as response:
+        async with session.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={kwargs['match']}") as response:
             data = xmltodict.parse(await response.text())
 
     embed = discord.Embed(color=discord.Color(0xABE5A4))
     embed.set_image(url=data['posts']['post']['@file_url'])
     return { 'embed': embed }
 
-async def gelbooru(submission_id, /, **kwargs):
+async def gelbooru(**kwargs):
     '''
     Hander for gelbooru.com
     '''
     async with ClientSession() as session:
-        async with session.get(f"https://gelbooru.com/index.php?page=dapi&s=post&q=index&id={submission_id}") as response:
+        async with session.get(f"https://gelbooru.com/index.php?page=dapi&s=post&q=index&id={kwargs['match']}") as response:
             data = xmltodict.parse(await response.text())
 
     embed = discord.Embed(color=discord.Color(0xABE5A4))
     embed.set_image(url=data['posts']['post']['file_url'])
     return { 'embed': embed }
 
-async def deviantart(url, /, **kwargs):
+async def deviantart(**kwargs):
     '''
     Handler for deviantart.com
     '''
     if kwargs['embeds'] == 0:
         async with ClientSession() as session:
-            async with session.get(f"https://backend.deviantart.com/oembed?url={url}") as response:
+            async with session.get(f"https://backend.deviantart.com/oembed?url={kwargs['match']}") as response:
                 data = await response.json()
 
         embed = discord.Embed(color=discord.Color(0xABE5A4))
         embed.set_image(url=data['url'])
         return { 'embed': embed }
 
-async def pawoo(submission_id, /, **kwargs):
+async def pawoo(**kwargs):
     '''
     Hander for pawoo.net
     '''
     async with ClientSession() as session:
-        async with session.get(f"https://pawoo.net/api/v1/statuses/{submission_id}") as response:
+        async with session.get(f"https://pawoo.net/api/v1/statuses/{kwargs['match']}") as response:
             data = await response.json()
 
     # Skip statuses without media attachments
@@ -293,12 +293,12 @@ async def pawoo(submission_id, /, **kwargs):
     embed.set_image(url=data['media_attachments'][0]['url'])
     return { 'embed': embed }
 
-async def baraag(submission_id, /, **kwargs):
+async def baraag(**kwargs):
     '''
     Hander for baraag.net
     '''
     async with ClientSession() as session:
-        async with session.get(f"https://baraag.net/api/v1/statuses/{submission_id}") as response:
+        async with session.get(f"https://baraag.net/api/v1/statuses/{kwargs['match']}") as response:
             data = await response.json()
 
     # Skip statuses without media attachments
@@ -313,16 +313,16 @@ async def baraag(submission_id, /, **kwargs):
     embed.set_image(url=data['media_attachments'][0]['url'])
     return { 'embed': embed }
 
-async def twitter_ffmpeg(submission_id, tweet_type):
+async def twitter_ffmpeg(partial_url, tweet_type):
     '''
     Helper for twitter functionality, downloading twitter gifs & videos
     '''
     # Tweet ID from URL
-    tweet_id = submission_id.split('/')[-1]
+    tweet_id = partial_url.split('/')[-1]
 
     with TemporaryDirectory() as tmpdir:
         with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
-            meta = ydl.extract_info(f"https://twitter.com/{submission_id}")
+            meta = ydl.extract_info(f"https://twitter.com/{partial_url}")
             filename = f"{tweet_id}.{meta['ext']}"
 
             # Convert Animated GIFs to .gif so they loop in Discord
@@ -343,12 +343,12 @@ async def twitter_ffmpeg(submission_id, tweet_type):
             with open(f"{tmpdir}/{filename}", 'rb') as file:
                 return { 'file': discord.File(file, filename=filename) }
 
-async def twitter(submission_id, /, **kwargs):
+async def twitter(**kwargs):
     '''
     Hander for twitter.com
     '''
     # Tweet ID from URL
-    tweet_id = submission_id.split('/')[-1]
+    tweet_id = kwargs['match'].split('/')[-1]
     async with ClientSession() as session:
         session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
         async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url") as response:
@@ -358,7 +358,7 @@ async def twitter(submission_id, /, **kwargs):
                 return
 
             if tweet_data['includes']['media'][0]['type'] == 'video' or tweet_data['includes']['media'][0]['type'] == 'animated_gif':
-                return await twitter_ffmpeg(submission_id, tweet_data['includes']['media'][0]['type'])
+                return await twitter_ffmpeg(kwargs['match'], tweet_data['includes']['media'][0]['type'])
 
             if kwargs['embeds'] == 0:
                 username = tweet_data['includes']['users'][0]['username']
@@ -369,15 +369,13 @@ async def twitter(submission_id, /, **kwargs):
                     embeds.append(embed)
                 return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def tiktok(url, /, **kwargs):
+async def tiktok(**kwargs):
     '''
     Handler for tiktok
     '''
     try:
         with TikTokApi() as api:
-            video = api.video(url=url)
-
-            print(url)
+            video = api.video(url = kwargs['match'])
 
             # Prepare mongodb connection
             client = MongoClient("mongodb://127.0.0.1/sourcebot")
@@ -399,7 +397,7 @@ async def tiktok(url, /, **kwargs):
     except Exception as exc:
         print('failed', exc)
 
-async def youtube(video_id, /, **kwargs):
+async def youtube(**kwargs):
     '''
     Youtube downloading via url
     '''
@@ -409,9 +407,9 @@ async def youtube(video_id, /, **kwargs):
 
     # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
-        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video_id}.%(ext)s"}) as ydl:
-            meta = ydl.extract_info(f"https://youtube.com/watch?v={video_id}")
-            filename = f"{video_id}.{meta['ext']}"
+        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{kwargs['match']}.%(ext)s"}) as ydl:
+            meta = ydl.extract_info(f"https://youtube.com/watch?v={kwargs['match']}")
+            filename = f"{kwargs['match']}.{meta['ext']}"
 
             os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
             return { 'content': f"{config['media']['url']}/youtube-{filename}"}
