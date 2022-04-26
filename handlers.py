@@ -152,7 +152,7 @@ async def inkbunny(**kwargs):
             session_id = data['sid']
 
         # Request information about the submission
-        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&kwargs['match']s={kwargs['match']}") as response:
+        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={kwargs['match']}") as response:
             data = await response.json()
 
     # Get submission data
@@ -203,8 +203,8 @@ async def e621_pools(**kwargs):
         async with session.get(f"https://e621.net/pools/{kwargs['match']}.json") as response:
             pool_data = await response.json()
 
-            for index, kwargs['match'] in enumerate(pool_data['post_ids']):
-                async with session.get(f"https://e621.net/posts/{kwargs['match']}.json") as response:
+            for index, submission_id in enumerate(pool_data['post_ids']):
+                async with session.get(f"https://e621.net/posts/{submission_id}.json") as response:
                     data = await response.json()
                     post = data['post']
 

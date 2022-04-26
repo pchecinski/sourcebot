@@ -149,7 +149,7 @@ async def on_message(message):
         for match in re.finditer(parser['pattern'], content):
             print(f"[debug]: {parser['function'].__name__} -> {match.group(1)}")
             output = await parser['function'](
-                match = match.group(1), 
+                match = match.group(1),
                 embeds = len(message.embeds),
                 is_dm = isinstance(message.channel, discord.DMChannel)
             )
