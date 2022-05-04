@@ -9,12 +9,14 @@ import asyncio
 import queue
 import re
 from pprint import pprint
+from typing import Optional
 
 # Third-party libraries
 import discord
 from discord.errors import NotFound
-from discord.ext.commands import has_permissions
-from pymongo import MongoClient
+from discord.ext import bridge
+from discord.ext.commands import has_permissions, check
+from pymongo import MongoClient, ReturnDocument
 from saucenao_api import SauceNao
 
 # Local modules
@@ -24,14 +26,15 @@ from config import config
 # Prepare bot with intents
 intents = discord.Intents.default()
 intents.members = True
+intents.message_content = True
 intents.reactions = True
-bot = discord.Bot(intents=intents)
+bot = bridge.Bot(command_prefix='$', intents=intents)
 
 # Tiktok queue
 tiktok_queue = queue.Queue()
 
 # Spoiler regular expression
-spoiler_regex = re.compile(r"(\|\|.*?\|\||\<.*?\>)", re.DOTALL)
+spoiler_regex = re.compile(r"(\|\|.*?\|\||\<.*?\>|\`.*?\`)", re.DOTALL)
 
 # Role reactions
 async def handle_reaction(payload):
@@ -65,7 +68,7 @@ async def handle_reaction(payload):
         return
 
     # Search for role in mongodb
-    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    client = MongoClient('mongodb://127.0.0.1/sourcebot')
     result = client['sourcebot']['roles'].find_one({
         'guild': payload.guild_id,
         'emoji': emoji
@@ -109,6 +112,9 @@ async def on_message(message):
     '''
     if message.author == bot.user:
         return
+
+    # Process prefix commands
+    await bot.process_commands(message)
 
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
@@ -181,36 +187,89 @@ async def on_raw_reaction_remove(payload):
     '''
     await handle_reaction(payload)
 
-# Various Commands
-@bot.slash_command(guild_ids = config['discord']['guild_ids'], name='tiktok')
+@bot.event
+async def on_command_error(ctx, error):
+    '''
+    Commands reaction handler
+    '''
+    pass
+
+# # Various Commands
+@bot.bridge_command(name='tiktok')
 async def _tiktok(ctx):
     '''
     Posts a random tiktok from sourcebot's collection.
     '''
-    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    client = MongoClient('mongodb://127.0.0.1/sourcebot')
     tiktok = client['sourcebot']['tiktok_db'].aggregate([{ "$sample": { "size": 1 } }]).next()
     await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
 
+async def update_account(member, value):
+    '''
+    Helper funcion to update moneybot value by member
+    '''
+    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    doc = client['sourcebot']['moneybot'].find_one_and_update(
+        {'id': member.id},
+        {'$inc': {'value': value}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER)
+    return doc
+
+def is_warren(ctx):
+    return ctx.guild and ctx.guild.id in [719003455221399572, 807947352584617984]
+
+@bot.bridge_command(name='moneybot')
+@check(is_warren)
+async def _moneybot(ctx, command: str, member: Optional[discord.Member], value: Optional[int] = 0):
+    '''
+    Manages buncoins (pattent pending)
+    '''
+    if command == 'give':
+        doc = await update_account(member, value)
+        await ctx.respond(f"Gave {member.name} {value} bunbucks. Current balance: {doc['value']}")
+        return
+
+    if command == 'take':
+        doc = await update_account(member, -value)
+        await ctx.respond(f"Taken {value} bunbucks from {member.name}. Current balance: {doc['value']}")
+        return
+
+    if command == 'balance':
+        client = MongoClient('mongodb://127.0.0.1/sourcebot')
+        doc = client['sourcebot']['moneybot'].find_one({'id': member.id})
+        await ctx.respond(f"{member.name}s current balance: {doc['value']}.")
+        return
+
+    if command == 'balanceall':
+        await asyncio.sleep(1)
+        client = MongoClient('mongodb://127.0.0.1/sourcebot')
+        embed = discord.Embed(title="Hall of bnuy fame", colour=discord.Colour(0x8ba089))
+        for doc in client['sourcebot']['moneybot'].find():
+            member = await bot.fetch_user(doc['id'])
+            embed.add_field(name=member.name, value=f"{int(doc['value'])}", inline = False)
+        await ctx.respond(embed=embed)
+
 # Roles commands
-@bot.slash_command(guild_ids = config['discord']['guild_ids'], name='list')
+@bot.bridge_command(name='list')
 @has_permissions(administrator=True)
 async def _list(ctx):
     '''
     Returns current list of roles configured for sourcebot.
     '''
     embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
-    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    client = MongoClient('mongodb://127.0.0.1/sourcebot')
     for role in client['sourcebot']['roles'].find({'guild': ctx.guild.id}):
         embed.add_field(name=role['emoji'], value=f"<@&{role['role']}>")
     await ctx.respond(embed=embed)
 
-@bot.slash_command(guild_ids = config['discord']['guild_ids'], name='add')
+@bot.bridge_command(name='add')
 @has_permissions(administrator=True)
 async def _add(ctx, emoji: str, *, role: discord.Role):
     '''
     Adds a new role reaction to the sourcebot.
     '''
-    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    client = MongoClient('mongodb://127.0.0.1/sourcebot')
     client['sourcebot']['roles'].insert_one({
         'guild': ctx.guild.id,
         'emoji': emoji,
@@ -218,13 +277,13 @@ async def _add(ctx, emoji: str, *, role: discord.Role):
     })
     await ctx.respond(f"{bot.user.name} added: {emoji} -> {role}")
 
-@bot.slash_command(guild_ids = config['discord']['guild_ids'], name = 'remove')
+@bot.bridge_command(name = 'remove')
 @has_permissions(administrator=True)
 async def _remove(ctx, emoji: str):
     '''
     Removes a role reaction from sourcebot list.
     '''
-    client = MongoClient("mongodb://127.0.0.1/sourcebot")
+    client = MongoClient('mongodb://127.0.0.1/sourcebot')
     client['sourcebot']['roles'].delete_one({
         'guild': ctx.guild.id,
         'emoji': emoji
