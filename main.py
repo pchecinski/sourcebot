@@ -24,14 +24,11 @@ import handlers
 from config import config
 
 # Prepare bot with intents
-intents = discord.Intents.default()
-intents.members = True
-intents.message_content = True
-intents.reactions = True
+intents = discord.Intents.all()
+# intents.members = True
+# intents.message_content = True
+# intents.reactions = True
 bot = bridge.Bot(command_prefix='$', intents=intents)
-
-# Tiktok queue
-tiktok_queue = queue.Queue()
 
 # Spoiler regular expression
 spoiler_regex = re.compile(r"(\|\|.*?\|\||\<.*?\>|\`.*?\`)", re.DOTALL)
@@ -192,7 +189,6 @@ async def on_command_error(ctx, error):
     '''
     Commands reaction handler
     '''
-    pass
 
 # # Various Commands
 @bot.bridge_command(name='tiktok')
@@ -216,11 +212,8 @@ async def update_account(member, value):
         return_document=ReturnDocument.AFTER)
     return doc
 
-def is_warren(ctx):
-    return ctx.guild and ctx.guild.id in [719003455221399572, 807947352584617984]
-
 @bot.bridge_command(name='moneybot')
-@check(is_warren)
+@check(lambda ctx: ctx.guild and ctx.guild.id in config['discord']['money_guilds'])
 async def _moneybot(ctx, command: str, member: Optional[discord.Member], value: Optional[int] = 0):
     '''
     Manages buncoins (pattent pending)

@@ -9,8 +9,9 @@ import hashlib
 import io
 import os
 import shlex
-from time import perf_counter
+from random import choices, randint
 from tempfile import TemporaryDirectory
+from time import perf_counter, time_ns
 from zipfile import ZipFile
 
 # Third-party libraries
@@ -22,7 +23,7 @@ import xmltodict
 import youtube_dl
 from aiohttp import ClientSession, BasicAuth
 from pymongo import MongoClient
-from TikTokApi import TikTokApi
+
 
 # Local modules
 from config import config
@@ -354,7 +355,7 @@ async def twitter(**kwargs):
         async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url") as response:
             tweet_data = await response.json()
 
-            if 'includes' not in tweet_data:
+            if 'includes' not in tweet_data or 'media' not in tweet_data['includes']:
                 return
 
             if tweet_data['includes']['media'][0]['type'] == 'video' or tweet_data['includes']['media'][0]['type'] == 'animated_gif':
@@ -373,29 +374,51 @@ async def tiktok(**kwargs):
     '''
     Handler for tiktok
     '''
-    try:
-        with TikTokApi() as api:
-            video = api.video(url = kwargs['match'])
+    async with ClientSession() as session:
+        # Fetch tiktok_id
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'
+        })
+        async with session.head(kwargs['match'], allow_redirects=True) as response:
+            url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
 
-            # Prepare mongodb connection
-            client = MongoClient("mongodb://127.0.0.1/sourcebot")
-            cached_data = client['sourcebot']['tiktok_db'].find_one({
-                'tiktok_id': int(video.id)
+        tiktok_id = url.split('/')[-1]
+
+        # Prepare mongodb connection
+        client = MongoClient("mongodb://127.0.0.1/sourcebot")
+        cached_data = client['sourcebot']['tiktok_db'].find_one({
+            'tiktok_id': int(tiktok_id)
+        })
+
+        if not cached_data:
+            print(f'[debug]: tiktok -> cache not found for {tiktok_id}, fetching')
+            time = time_ns()
+            params = {
+                'aweme_id': tiktok_id, 'region': 'US', 'sys_region': 'US', 'op_region': 'US',
+                'ts' : int(time / 1000000000), '_rticket': int(time / 1000000), 'timezone_name': "Etc%2FGMT", 'timezone_offset': 0,
+                'device_type': "Pixel%20" + "".join(choices('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', k=8)),
+                'iid': randint(6000000000000000000, 7000000000000000000), 'device_id': randint(6000000000000000000, 7000000000000000000),
+                'locale': 'en', 'app_language': 'en', 'language': 'en', 'resolution': '1080*1920', 'version_code': 100000, 'dpi': 441,
+                'cpu_support64': '0', 'pass-route': 1, 'pass-region': 1, 'app_type': 'normal', 'aid': 1180, 'app_name': 'musical_ly',
+                'device_platform': 'android', 'device_brand': 'google', 'os_version': '8.0.0', 'channel': 'googleplay'
+            }
+
+            session.headers.update({
+                'User-Agent': 'okhttp'
+            })
+            async with session.get('https://api-t2.tiktokv.com/aweme/v1/aweme/detail/', params=params) as response:
+                data = await response.json()
+
+            with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
+                async with session.get(data['aweme_detail']['video']['play_addr']['url_list'][0]) as response:
+                    file.write(await response.read())
+
+            client['sourcebot']['tiktok_db'].insert_one({
+                'tiktok_id': int(tiktok_id),
+                'size': os.stat(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4").st_size
             })
 
-            # Cache information about fetched video
-            if not cached_data:
-                with open(f"{config['media']['path']}/tiktok-{video.id}.mp4", 'wb') as file:
-                    file.write(video.bytes())
-
-                client['sourcebot']['tiktok_db'].insert_one({
-                    'tiktok_id': int(video.id),
-                    'size': len(video.bytes())
-                })
-
-        return { 'content': f"{config['media']['url']}/tiktok-{video.id}.mp4" }
-    except Exception as exc:
-        print('failed', exc)
+    return { 'content': f"{config['media']['url']}/tiktok-{tiktok_id}.mp4" }
 
 async def youtube(**kwargs):
     '''
