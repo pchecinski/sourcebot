@@ -1,6 +1,5 @@
 aiofiles==0.8.0
 faapi==2.19.4
-nest-asyncio==1.5.5
 py-cord==2.0.0b7
 pymongo==4.1.1
 PyYAML==6.0

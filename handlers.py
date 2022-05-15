@@ -18,7 +18,6 @@ from zipfile import ZipFile
 import aiofiles
 import discord
 import faapi
-import nest_asyncio
 import xmltodict
 import youtube_dl
 from aiohttp import ClientSession, BasicAuth
@@ -27,9 +26,6 @@ from pymongo import MongoClient
 
 # Local modules
 from config import config
-
-# Enable nested asyncio calls for Tiktok
-nest_asyncio.apply()
 
 # Source fetching
 async def pixiv(**kwargs):
