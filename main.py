@@ -6,9 +6,7 @@ Main source code / entry point for sourcebot
 
 # Python standard libraries
 import asyncio
-import queue
 import re
-from pprint import pprint
 from typing import Optional
 
 # Third-party libraries
@@ -91,10 +89,8 @@ parsers = [
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
     { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handlers.e621 },
     { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools },
-    { 'pattern': re.compile(r"(?<=https://rule34.xxx/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handlers.rule34xxx },
-    { 'pattern': re.compile(r"(?<=https://gelbooru.com/index.php\?page\=post\&s\=view\&id\=)(\w+)"), 'function': handlers.gelbooru },
-    { 'pattern': re.compile(r"(?:pawoo.net\/@\w+|pawoo.net\/web\/statuses)\/(\w+)"), 'function': handlers.pawoo },
-    { 'pattern': re.compile(r"(?:baraag.net\/@\w+|baraag.net\/web\/statuses)\/(\w+)"), 'function': handlers.baraag },
+    { 'pattern': re.compile(r"(gelbooru.com|rule34.xxx)\/.*id\=(\w+)"), 'function': handlers.booru },
+    { 'pattern': re.compile(r"https:\/\/(?:(baraag\.net|pawoo\.net)[.@/\w]*)\/(\w+)"), 'function': handlers.mastodon },
     { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"((?:https:\/\/vm.tiktok.com\/|https:\/\/www.tiktok.com\/t\/)\w+)"), 'function': handlers.tiktok },
@@ -130,7 +126,7 @@ async def on_message(message):
             try:
                 sources.append(f"<{results[0].urls[0]}>")
             except IndexError:
-                pprint(f"{attachment.url}, {results}")
+                print(f"{attachment.url}, {results}")
 
         # if len(sources) == 0:
         #     return
@@ -150,11 +146,9 @@ async def on_message(message):
     # Match and run all supported handers
     for parser in parsers:
         for match in re.finditer(parser['pattern'], content):
-            print(f"[debug]: {parser['function'].__name__} -> {match.group(1)}")
+            print(f"[debug]: {parser['function'].__name__} -> {match.groups()}")
             output = await parser['function'](
-                match = match.group(1),
-                embeds = len(message.embeds),
-                is_dm = isinstance(message.channel, discord.DMChannel)
+                match = match, embeds = message.embeds, is_dm = isinstance(message.channel, discord.DMChannel)
             )
 
             if isinstance(output, list):

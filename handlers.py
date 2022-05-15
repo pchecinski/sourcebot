@@ -35,6 +35,9 @@ async def pixiv(**kwargs):
     # Static data for pixiv
     base_url = "https://app-api.pixiv.net"
 
+    # Illustration ID from params
+    illust_id = kwargs['match'].group(1)
+
     # Prepare Access Token
     async with ClientSession() as session:
         session.headers.update({
@@ -66,18 +69,18 @@ async def pixiv(**kwargs):
         # Get Illustration details
         async with session.get(
             url = f"{base_url}/v1/illust/detail",
-            params = { "illust_id": kwargs['match'] },
+            params = { "illust_id": illust_id },
         ) as response:
             data = await response.json()
             session.headers.update({
-                "Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={kwargs['match']}"
+                "Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={illust_id}"
             })
 
         if data['illust']['type'] == 'ugoira':
             # Get file metadata (framges and zip_url)
             async with session.get(
                 url = f"{base_url}/v1/ugoira/metadata",
-                params = { "illust_id": kwargs['match'] },
+                params = { "illust_id": illust_id },
             ) as response:
                 metadata = await response.json()
 
@@ -98,7 +101,7 @@ async def pixiv(**kwargs):
                 args = shlex.split(
                     f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt "
                     "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                    f"{kwargs['match']}.gif"
+                    f"{illust_id}.gif"
                 )
                 ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                 await ffmpeg.wait()
@@ -106,12 +109,12 @@ async def pixiv(**kwargs):
                 # Prepare attachment file
                 embeds, files = [], []
                 embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
-                if os.stat(f"{tmpdir}/{kwargs['match']}.gif").st_size > 8388608: # 8M
-                    os.rename(f"{tmpdir}/{kwargs['match']}.gif", f"{config['media']['path']}/pixiv-{kwargs['match']}.gif")
-                    embed.set_image(url=f"{config['media']['url']}/pixiv-{kwargs['match']}.gif")
+                if os.stat(f"{tmpdir}/{illust_id}.gif").st_size > 8388608: # 8M
+                    os.rename(f"{tmpdir}/{illust_id}.gif", f"{config['media']['path']}/pixiv-{illust_id}.gif")
+                    embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}.gif")
                 else:
-                    files.append(discord.File(f"{tmpdir}/{kwargs['match']}.gif", filename=f"{kwargs['match']}.gif"))
-                    embed.set_image(url=f"attachment://{kwargs['match']}.gif")
+                    files.append(discord.File(f"{tmpdir}/{illust_id}.gif", filename=f"{illust_id}.gif"))
+                    embed.set_image(url=f"attachment://{illust_id}.gif")
                 embeds.append(embed)
         else:
             if data['illust']['meta_single_page']:
@@ -129,8 +132,8 @@ async def pixiv(**kwargs):
 
                 ext = os.path.splitext(url)[1]
                 async with session.get(url) as response:
-                    files.append(discord.File(io.BytesIO(await response.read()), filename=f"{kwargs['match']}_{index}.{ext}"))
-                    embed.set_image(url=f"attachment://{kwargs['match']}_{index}.{ext}")
+                    files.append(discord.File(io.BytesIO(await response.read()), filename=f"{illust_id}_{index}.{ext}"))
+                    embed.set_image(url=f"attachment://{illust_id}_{index}.{ext}")
                     embeds.append(embed)
 
     # Parse and embed all files
@@ -140,6 +143,9 @@ async def inkbunny(**kwargs):
     '''
     Hander for inkbunny.net
     '''
+    # Submission ID from params
+    submission_id = kwargs['match'].group(1)
+
     async with ClientSession() as session:
         # Log in to API and get session ID
         async with session.get("https://inkbunny.net/api_login.php",
@@ -149,7 +155,7 @@ async def inkbunny(**kwargs):
             session_id = data['sid']
 
         # Request information about the submission
-        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={kwargs['match']}") as response:
+        async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={submission_id}") as response:
             data = await response.json()
 
     # Get submission data
@@ -167,13 +173,16 @@ async def e621(**kwargs):
     '''
     Hander for e621.net
     '''
+    # Post ID from params
+    post_id = kwargs['match'].group(1)
+
     async with ClientSession(auth = BasicAuth(config['e621']['username'], config['e621']['api_key'])) as session:
         session.headers.update({
             'User-Agent': f"sourcebot by {config['e621']['username']}"
         })
 
         # Get image data using API Endpoint
-        async with session.get(f"https://e621.net/posts/{kwargs['match']}.json") as response:
+        async with session.get(f"https://e621.net/posts/{post_id}.json") as response:
             data = await response.json()
             post = data['post']
 
@@ -189,6 +198,9 @@ async def e621_pools(**kwargs):
     '''
     Hander for e621.net pools (galleries)
     '''
+    # Pool ID from params
+    pool_id = kwargs['match'].group(1)
+
     # Parse and embed all files
     embeds = []
     async with ClientSession(auth = BasicAuth(config['e621']['username'], config['e621']['api_key'])) as session:
@@ -197,7 +209,7 @@ async def e621_pools(**kwargs):
         })
 
         # Get image data using API Endpoint
-        async with session.get(f"https://e621.net/pools/{kwargs['match']}.json") as response:
+        async with session.get(f"https://e621.net/pools/{pool_id}.json") as response:
             pool_data = await response.json()
 
             for index, submission_id in enumerate(pool_data['post_ids']):
@@ -218,13 +230,16 @@ async def furaffinity(**kwargs):
     '''
     Hander for furaffinity.net
     '''
+    # Submission ID from params
+    submission_id = kwargs['match'].group(1)
+
     cookies = [
         {"name": "a", "value": config['furaffinity']['cookie']['a']},
         {"name": "b", "value": config['furaffinity']['cookie']['b']},
     ]
 
     api = faapi.FAAPI(cookies)
-    submission, _ = api.get_submission(kwargs['match'])
+    submission, _ = api.get_submission(submission_id)
 
     if submission.rating == 'General':
         return
@@ -233,77 +248,55 @@ async def furaffinity(**kwargs):
     embed.set_image(url=submission.file_url)
     return { 'embed': embed }
 
-async def rule34xxx(**kwargs):
+async def booru(**kwargs):
     '''
-    Hander for rule34.xxx
+    Hander for booru sites (rule34.xxx, gelbooru.com)
     '''
+    # URL and ID from params
+    page_url = kwargs['match'].group(1)
+    post_id = kwargs['match'].group(2)
+
     async with ClientSession() as session:
-        async with session.get(f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&id={kwargs['match']}") as response:
+        async with session.get(f"https://{page_url}/index.php?page=dapi&s=post&q=index&id={post_id}") as response:
             data = xmltodict.parse(await response.text())
 
-    embed = discord.Embed(color=discord.Color(0xABE5A4))
-    embed.set_image(url=data['posts']['post']['@file_url'])
-    return { 'embed': embed }
-
-async def gelbooru(**kwargs):
-    '''
-    Hander for gelbooru.com
-    '''
-    async with ClientSession() as session:
-        async with session.get(f"https://gelbooru.com/index.php?page=dapi&s=post&q=index&id={kwargs['match']}") as response:
-            data = xmltodict.parse(await response.text())
+    url = data['posts']['post']['@file_url'] if '@file_url' in data['posts']['post'] else data['posts']['post']['file_url']
 
     embed = discord.Embed(color=discord.Color(0xABE5A4))
-    embed.set_image(url=data['posts']['post']['file_url'])
+    embed.set_image(url=url)
     return { 'embed': embed }
 
 async def deviantart(**kwargs):
     '''
     Handler for deviantart.com
     '''
-    if kwargs['embeds'] == 0:
+    # Post URL from params
+    url = kwargs['match'].group(1)
+
+    if not kwargs['embeds']:
         async with ClientSession() as session:
-            async with session.get(f"https://backend.deviantart.com/oembed?url={kwargs['match']}") as response:
+            async with session.get(f"https://backend.deviantart.com/oembed?url={url}") as response:
                 data = await response.json()
 
         embed = discord.Embed(color=discord.Color(0xABE5A4))
         embed.set_image(url=data['url'])
         return { 'embed': embed }
 
-async def pawoo(**kwargs):
+async def mastodon(**kwargs):
     '''
-    Hander for pawoo.net
+    Hander for mastodon (baraag.net, pawoo.net)
     '''
+
+    # URL and ID from params
+    page_url = kwargs['match'].group(1)
+    post_id = kwargs['match'].group(2)
+
     async with ClientSession() as session:
-        async with session.get(f"https://pawoo.net/api/v1/statuses/{kwargs['match']}") as response:
+        async with session.get(f"https://{page_url}/api/v1/statuses/{post_id}") as response:
             data = await response.json()
 
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
-        return
-
-    # Skip account with pawoo.net or artalley.social in profile URL
-    if 'pawoo.net' in data['account']['url'] or 'artalley.social' in data['account']['url']:
-        return
-
-    embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
-    embed.set_image(url=data['media_attachments'][0]['url'])
-    return { 'embed': embed }
-
-async def baraag(**kwargs):
-    '''
-    Hander for baraag.net
-    '''
-    async with ClientSession() as session:
-        async with session.get(f"https://baraag.net/api/v1/statuses/{kwargs['match']}") as response:
-            data = await response.json()
-
-    # Skip statuses without media attachments
-    if 'media_attachments' not in data:
-        return
-
-    # Skip account with baraag.net or artalley.social in profile URL
-    if 'baraag.net' in data['account']['url'] or 'artalley.social' in data['account']['url']:
         return
 
     embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
@@ -345,7 +338,9 @@ async def twitter(**kwargs):
     Hander for twitter.com
     '''
     # Tweet ID from URL
-    tweet_id = kwargs['match'].split('/')[-1]
+    tweet_path = kwargs['match'].group(1)
+    tweet_id = tweet_path.split('/')[-1]
+
     async with ClientSession() as session:
         session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
         async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url") as response:
@@ -355,9 +350,9 @@ async def twitter(**kwargs):
                 return
 
             if tweet_data['includes']['media'][0]['type'] == 'video' or tweet_data['includes']['media'][0]['type'] == 'animated_gif':
-                return await twitter_ffmpeg(kwargs['match'], tweet_data['includes']['media'][0]['type'])
+                return await twitter_ffmpeg(tweet_path, tweet_data['includes']['media'][0]['type'])
 
-            if kwargs['embeds'] == 0:
+            if not kwargs['embeds']:
                 username = tweet_data['includes']['users'][0]['username']
                 embeds = []
                 for index, file in enumerate(tweet_data['includes']['media']):
@@ -370,12 +365,15 @@ async def tiktok(**kwargs):
     '''
     Handler for tiktok
     '''
+    # Tiktok URL from params
+    message_url = kwargs['match'].group(1)
+
     async with ClientSession() as session:
         # Fetch tiktok_id
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'
         })
-        async with session.head(kwargs['match'], allow_redirects=True) as response:
+        async with session.head(message_url, allow_redirects=True) as response:
             url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
 
         tiktok_id = url.split('/')[-1]
@@ -420,15 +418,18 @@ async def youtube(**kwargs):
     '''
     Youtube downloading via url
     '''
+    # Youtube video path from params
+    video = kwargs['match'].group(1)
+
     # Only trigger this for direct messages
     if not kwargs['is_dm']:
         return
 
     # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
-        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{kwargs['match']}.%(ext)s"}) as ydl:
-            meta = ydl.extract_info(f"https://youtube.com/watch?v={kwargs['match']}")
-            filename = f"{kwargs['match']}.{meta['ext']}"
+        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video}.%(ext)s"}) as ydl:
+            meta = ydl.extract_info(f"https://youtube.com/watch?v={video}")
+            filename = f"{video}.{meta['ext']}"
 
             os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
             return { 'content': f"{config['media']['url']}/youtube-{filename}"}
