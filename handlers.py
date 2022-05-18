@@ -256,6 +256,9 @@ async def booru(**kwargs):
     page_url = kwargs['match'].group(1)
     post_id = kwargs['match'].group(2)
 
+    if not kwargs['embeds'] or kwargs['embeds'][0].type == 'article':
+        return
+
     async with ClientSession() as session:
         async with session.get(f"https://{page_url}/index.php?page=dapi&s=post&q=index&id={post_id}") as response:
             data = xmltodict.parse(await response.text())
@@ -297,6 +300,9 @@ async def mastodon(**kwargs):
 
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
+        return
+
+    if not kwargs['embeds'] or kwargs['embeds'][0].type == 'article':
         return
 
     embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
