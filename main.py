@@ -6,8 +6,8 @@ Main source code / entry point for sourcebot
 
 # Python standard libraries
 import asyncio
+import datetime
 import re
-from typing import Optional
 
 # Third-party libraries
 import discord
@@ -23,9 +23,6 @@ from config import config
 
 # Prepare bot with intents
 intents = discord.Intents.all()
-# intents.members = True
-# intents.message_content = True
-# intents.reactions = True
 bot = bridge.Bot(command_prefix='$', intents=intents)
 
 # Spoiler regular expression
@@ -178,13 +175,7 @@ async def on_raw_reaction_remove(payload):
     '''
     await handle_reaction(payload)
 
-@bot.event
-async def on_command_error(ctx, error):
-    '''
-    Commands reaction handler
-    '''
-
-# # Various Commands
+# Various Commands
 @bot.bridge_command(name='tiktok')
 async def _tiktok(ctx):
     '''
@@ -206,36 +197,34 @@ async def update_account(member, value):
         return_document=ReturnDocument.AFTER)
     return doc
 
-@bot.bridge_command(name='moneybot')
+@bot.bridge_command(name='give')
 @check(lambda ctx: ctx.guild and ctx.guild.id in config['discord']['money_guilds'])
-async def _moneybot(ctx, command: str, member: Optional[discord.Member], value: Optional[int] = 0):
+async def _give(ctx, member: discord.Member, value: int):
     '''
-    Manages buncoins (pattent pending)
+    Used to give another member bunbucks
     '''
-    if command == 'give':
-        doc = await update_account(member, value)
-        await ctx.respond(f"Gave {member.name} {value} bunbucks. Current balance: {doc['value']}")
-        return
+    if ctx.author == member:
+        return await ctx.respond('You cannon transfer your own <:bun_bucks:976470729686155324> **bunbucks** to yourself. That wouldn\'t really do much, don\'t you think so?')
 
-    if command == 'take':
-        doc = await update_account(member, -value)
-        await ctx.respond(f"Taken {value} bunbucks from {member.name}. Current balance: {doc['value']}")
-        return
+    if value <= 0:
+        return await ctx.respond('You cannot give someone negative <:bun_bucks:976470729686155324> **bunbucks**, that would be very unapropiate!')
 
-    if command == 'balance':
-        client = MongoClient('mongodb://127.0.0.1/sourcebot')
-        doc = client['sourcebot']['moneybot'].find_one({'id': member.id})
-        await ctx.respond(f"{member.name}s current balance: {doc['value']}.")
-        return
+    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    author = client['sourcebot']['moneybot'].find_one({'id': ctx.author.id})
 
-    if command == 'balanceall':
-        await asyncio.sleep(1)
-        client = MongoClient('mongodb://127.0.0.1/sourcebot')
-        embed = discord.Embed(title="Hall of bnuy fame", colour=discord.Colour(0x8ba089))
-        for doc in client['sourcebot']['moneybot'].find():
-            member = await bot.fetch_user(doc['id'])
-            embed.add_field(name=member.name, value=f"{int(doc['value'])}", inline = False)
-        await ctx.respond(embed=embed)
+    if value > author['value']:
+        return await ctx.respond(f"You don't have enough bunbucks, you currently have <:bun_bucks:976470729686155324> **{author['value']:.0f}**.")
+
+    # Update both members balances
+    await update_account(ctx.author, -value)
+    await update_account(member, value)
+
+    client['sourcebot']['moneylogs'].insert_one({
+        'author_id': ctx.author.id, 'target_id': member.id,
+        'value': value, 'date': datetime.datetime.utcnow()
+    })
+
+    await ctx.respond(f"{ctx.author.name} gave {member.name} <:bun_bucks:976470729686155324> **{value:.0f} bunbuck{'' if value == 1 else 's'}**.")
 
 # Roles commands
 @bot.bridge_command(name='list')
