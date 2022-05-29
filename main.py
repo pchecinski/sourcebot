@@ -14,7 +14,7 @@ import discord
 from discord.errors import NotFound
 from discord.ext import bridge
 from discord.ext.commands import has_permissions, check
-from pymongo import MongoClient, ReturnDocument
+from pymongo import DESCENDING, MongoClient, ReturnDocument
 from saucenao_api import SauceNao
 
 # Local modules
@@ -185,6 +185,7 @@ async def _tiktok(ctx):
     tiktok = client['sourcebot']['tiktok_db'].aggregate([{ "$sample": { "size": 1 } }]).next()
     await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
 
+# Bunbucks commands
 async def update_account(member, value):
     '''
     Helper funcion to update moneybot value by member
@@ -225,6 +226,21 @@ async def _give(ctx, member: discord.Member, value: int):
     })
 
     await ctx.respond(f"{ctx.author.name} gave {member.name} <:bun_bucks:976470729686155324> **{value:.0f} bunbuck{'' if value == 1 else 's'}**.")
+
+@bot.bridge_command(name='bunboard')
+@check(lambda ctx: ctx.guild and ctx.guild.id in config['discord']['money_guilds'])
+async def _bunboard(ctx):
+    '''
+    Used to give another member bunbucks
+    '''
+    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    embed = discord.Embed(colour=discord.Colour(0x8ba089))
+    embed.set_author(name='Bunboard')
+    embed.set_thumbnail(url='https://static.storky.dev/bun_bucks.png')
+    for doc in client['sourcebot']['moneybot'].find().sort('value', DESCENDING):
+        member = await bot.fetch_user(doc['id'])
+        embed.add_field(name=member.name, value=f"**{doc['value']:.0f} bunbuck{'' if doc['value'] == 1 else 's'}**")
+    await ctx.respond(embed=embed)
 
 # Roles commands
 @bot.bridge_command(name='list')
