@@ -116,6 +116,7 @@ async def pixiv(**kwargs):
                     files.append(discord.File(f"{tmpdir}/{illust_id}.gif", filename=f"{illust_id}.gif"))
                     embed.set_image(url=f"attachment://{illust_id}.gif")
                 embeds.append(embed)
+                return [ { 'embeds': embeds, 'files': files } ]
         else:
             if data['illust']['meta_single_page']:
                 urls = [ data['illust']['meta_single_page']['original_image_url'] ]
