@@ -90,8 +90,7 @@ parsers = [
     { 'pattern': re.compile(r"https:\/\/(?:(baraag\.net|pawoo\.net)[.@/\w]*)\/(\w+)"), 'function': handlers.mastodon },
     { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
-    { 'pattern': re.compile(r"((?:https:\/\/vm.tiktok.com\/|https:\/\/www.tiktok.com\/t\/)\w+)"), 'function': handlers.tiktok },
-    { 'pattern': re.compile(r"(https:\/\/www.tiktok.com\/@\w+\/video\/\w+)"), 'function': handlers.tiktok },
+    { 'pattern': re.compile(r"(https:\/\/(?:(?:vm\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart }
 ]
 
