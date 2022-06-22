@@ -23,7 +23,6 @@ import youtube_dl
 from aiohttp import ClientSession, BasicAuth
 from pymongo import MongoClient
 
-
 # Local modules
 from config import config
 
@@ -440,7 +439,6 @@ async def youtube(**kwargs):
 
             os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
             return { 'content': f"{config['media']['url']}/youtube-{filename}"}
-
 
 # Video files converter
 async def convert(filename, url):
