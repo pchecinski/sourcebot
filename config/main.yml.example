@@ -1,12 +1,15 @@
 discord:
   token: "discord-bot-token"
-  role_channel: 'role-channel'
-  guild_ids: # Guilds that should have commands enabled
+  role_channel: "role-channel"
+  sauce_channels: # Channels ids where source providing should work
+    - 123456789012345678
+    - 234567890123456789
+  money_guilds:
     - 345678901234567890
     - 456789012345678901
-  art_channels: # Channels ids where source providing should work
-    - 123456789012345678
-    - 234567890123456789 
+
+telegram:
+  token: "-"
 
 media:
   path: "/path/to/media"
