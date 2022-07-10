@@ -173,6 +173,11 @@ async def e621(**kwargs):
     '''
     Hander for e621.net
     '''
+
+    # Ignore posts that already have an embed
+    if kwargs['embeds']:
+        return
+
     # Post ID from params
     post_id = kwargs['match'].group(1)
 
@@ -186,9 +191,9 @@ async def e621(**kwargs):
             data = await response.json()
             post = data['post']
 
-        # Check for global blacklist (ignore other links as they already come with previews)
-        if 'young' not in post['tags']['general'] or post['rating'] == 's':
-            return
+        # # Check for global blacklist (ignore other links as they already come with previews)
+        # if 'young' not in post['tags']['general'] or post['rating'] == 's':
+        #     return
 
     embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
     embed.set_image(url=post['sample']['url'])
