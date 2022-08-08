@@ -105,24 +105,19 @@ async def pixiv(**kwargs):
                 ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                 await ffmpeg.wait()
 
-                # Prepare attachment file
-                embeds, files = [], []
+                # Move converted file to media path from temporary directory
+                os.rename(f"{tmpdir}/{illust_id}.gif", f"{config['media']['path']}/pixiv-{illust_id}.gif")
+
                 embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
-                if os.stat(f"{tmpdir}/{illust_id}.gif").st_size > 8388608: # 8M
-                    os.rename(f"{tmpdir}/{illust_id}.gif", f"{config['media']['path']}/pixiv-{illust_id}.gif")
-                    embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}.gif")
-                else:
-                    files.append(discord.File(f"{tmpdir}/{illust_id}.gif", filename=f"{illust_id}.gif"))
-                    embed.set_image(url=f"attachment://{illust_id}.gif")
-                embeds.append(embed)
-                return [ { 'embeds': embeds, 'files': files } ]
+                embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}.gif")
+                return [ { 'embed': embed } ]
         else:
             if data['illust']['meta_single_page']:
                 urls = [ data['illust']['meta_single_page']['original_image_url'] ]
             else:
                 urls = [ url['image_urls']['original'] for url in data['illust']['meta_pages'] ]
 
-            embeds, files = [], []
+            embeds = []
             for index, url in enumerate(urls):
                 # Prepare the embed object
                 embed = discord.Embed(
@@ -132,12 +127,14 @@ async def pixiv(**kwargs):
 
                 ext = os.path.splitext(url)[1]
                 async with session.get(url) as response:
-                    files.append(discord.File(io.BytesIO(await response.read()), filename=f"{illust_id}_{index}.{ext}"))
-                    embed.set_image(url=f"attachment://{illust_id}_{index}.{ext}")
+                    with open(f"{config['media']['path']}/pixiv-{illust_id}_{index}.{ext}", 'wb') as file:
+                        file.write(await response.read())
+
+                    embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}_{index}.{ext}")
                     embeds.append(embed)
 
     # Parse and embed all files
-    return [ { 'embeds': embeds[i:i+10], 'files': files[i:i+10] } for i in range(0, len(embeds), 10) ]
+    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
 async def inkbunny(**kwargs):
     '''
@@ -197,7 +194,7 @@ async def e621(**kwargs):
 
     embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
     embed.set_image(url=post['sample']['url'])
-    return { 'embed': embed }
+    return [ { 'embed': embed } ]
 
 async def e621_pools(**kwargs):
     '''
@@ -251,7 +248,7 @@ async def furaffinity(**kwargs):
 
     embed = discord.Embed(title=f"{submission.title} by {submission.author}", color=discord.Color(0xFAAF3A))
     embed.set_image(url=submission.file_url)
-    return { 'embed': embed }
+    return [ { 'embed': embed } ]
 
 async def booru(**kwargs):
     '''
@@ -261,7 +258,7 @@ async def booru(**kwargs):
     page_url = kwargs['match'].group(1)
     post_id = kwargs['match'].group(2)
 
-    if not kwargs['embeds'] or kwargs['embeds'][0].type == 'article':
+    if not kwargs['embeds'] or kwargs['embeds'][0].type in ('article', 'video'):
         return
 
     async with ClientSession() as session:
@@ -272,7 +269,7 @@ async def booru(**kwargs):
 
     embed = discord.Embed(color=discord.Color(0xABE5A4))
     embed.set_image(url=url)
-    return { 'embed': embed }
+    return [ { 'embed': embed } ]
 
 async def deviantart(**kwargs):
     '''
@@ -288,7 +285,7 @@ async def deviantart(**kwargs):
 
         embed = discord.Embed(color=discord.Color(0xABE5A4))
         embed.set_image(url=data['url'])
-        return { 'embed': embed }
+        return [ { 'embed': embed } ]
 
 async def mastodon(**kwargs):
     '''
@@ -307,12 +304,12 @@ async def mastodon(**kwargs):
     if 'media_attachments' not in data:
         return
 
-    if not kwargs['embeds'] or kwargs['embeds'][0].type == 'article':
+    if not kwargs['embeds'] or kwargs['embeds'][0].type in ('article', 'video'):
         return
 
     embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
     embed.set_image(url=data['media_attachments'][0]['url'])
-    return { 'embed': embed }
+    return [ { 'embed': embed } ]
 
 async def twitter_ffmpeg(partial_url, tweet_type):
     '''
@@ -339,10 +336,10 @@ async def twitter_ffmpeg(partial_url, tweet_type):
 
             if os.stat(f"{tmpdir}/{filename}").st_size > 8388608: # 8M
                 os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/tweet-{filename}")
-                return { 'content': f"{config['media']['url']}/tweet-{filename}"}
+                return [ { 'content': f"{config['media']['url']}/tweet-{filename}"} ]
 
             with open(f"{tmpdir}/{filename}", 'rb') as file:
-                return { 'file': discord.File(file, filename=filename) }
+                return [ { 'file': discord.File(file, filename=filename) } ]
 
 async def twitter(**kwargs):
     '''
@@ -423,7 +420,7 @@ async def tiktok(**kwargs):
                 'size': os.stat(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4").st_size
             })
 
-    return { 'content': f"{config['media']['url']}/tiktok-{tiktok_id}.mp4" }
+    return [ { 'content': f"{config['media']['url']}/tiktok-{tiktok_id}.mp4" } ]
 
 async def youtube(**kwargs):
     '''
@@ -443,7 +440,7 @@ async def youtube(**kwargs):
             filename = f"{video}.{meta['ext']}"
 
             os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
-            return { 'content': f"{config['media']['url']}/youtube-{filename}"}
+            return [ { 'content': f"{config['media']['url']}/youtube-{filename}"} ]
 
 # Video files converter
 async def convert(filename, url):
