@@ -21,15 +21,14 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-TIKTOK_PATTERN = re.compile(r"(https:\/\/(?:(?:vm\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))")
+TIKTOK_PATTERN = re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))")
 
 async def tiktok_message(update: Update, context: CallbackContext.DEFAULT_TYPE):
     '''
     tiktok message handler
     '''
     for match in re.finditer(TIKTOK_PATTERN, update.message.text):
-        result = await tiktok(match=match)
-        if result:
+        for result in await tiktok(match=match):
             await context.bot.send_message(reply_to_message_id=update.message.message_id, chat_id=update.effective_chat.id, text=result['content'])
 
 if __name__ == '__main__':
