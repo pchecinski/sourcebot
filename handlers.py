@@ -10,6 +10,7 @@ import io
 import os
 import shlex
 from random import choices, randint
+from re import findall
 from tempfile import TemporaryDirectory
 from time import perf_counter, time_ns
 from zipfile import ZipFile
@@ -127,10 +128,10 @@ async def pixiv(**kwargs):
 
                 ext = os.path.splitext(url)[1]
                 async with session.get(url) as response:
-                    with open(f"{config['media']['path']}/pixiv-{illust_id}_{index}.{ext}", 'wb') as file:
+                    with open(f"{config['media']['path']}/pixiv-{illust_id}_{index}{ext}", 'wb') as file:
                         file.write(await response.read())
 
-                    embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}_{index}.{ext}")
+                    embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}_{index}{ext}")
                     embeds.append(embed)
 
     # Parse and embed all files
@@ -172,7 +173,7 @@ async def e621(**kwargs):
     '''
 
     # Ignore posts that already have an embed
-    if kwargs['embeds']:
+    if kwargs['embeds'] and kwargs['embeds'][0].type in ('video'):
         return
 
     # Post ID from params
@@ -258,7 +259,7 @@ async def booru(**kwargs):
     page_url = kwargs['match'].group(1)
     post_id = kwargs['match'].group(2)
 
-    if not kwargs['embeds'] or kwargs['embeds'][0].type in ('article', 'video'):
+    if kwargs['embeds'] and kwargs['embeds'][0].type in ('video'):
         return
 
     async with ClientSession() as session:
@@ -304,7 +305,7 @@ async def mastodon(**kwargs):
     if 'media_attachments' not in data:
         return
 
-    if not kwargs['embeds'] or kwargs['embeds'][0].type in ('article', 'video'):
+    if kwargs['embeds'] and kwargs['embeds'][0].type in ('video'):
         return
 
     embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
@@ -379,10 +380,12 @@ async def tiktok(**kwargs):
     async with ClientSession() as session:
         # Fetch tiktok_id
         session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0'
         })
-        async with session.head(message_url, allow_redirects=True) as response:
+        async with session.get(message_url, allow_redirects=True) as response:
             url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
+            match = findall(r'"downloadAddr":"(.+?)"', await response.text())
+            wmarked_url = match[0].replace("\\u0026", '&').replace("\\u002F", '/')
 
         tiktok_id = url.split('/')[-1]
 
@@ -411,8 +414,13 @@ async def tiktok(**kwargs):
             async with session.get('https://api-t2.tiktokv.com/aweme/v1/aweme/detail/', params=params) as response:
                 data = await response.json()
 
+            try:
+                tiktok_video_url = data['aweme_detail']['video']['play_addr']['url_list'][0]
+            except TypeError:
+                tiktok_video_url = wmarked_url
+
             with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
-                async with session.get(data['aweme_detail']['video']['play_addr']['url_list'][0]) as response:
+                async with session.get(tiktok_video_url) as response:
                     file.write(await response.read())
 
             client['sourcebot']['tiktok_db'].insert_one({
