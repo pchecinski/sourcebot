@@ -414,6 +414,7 @@ async def tiktok(**kwargs):
             async with session.get('https://api-t2.tiktokv.com/aweme/v1/aweme/detail/', params=params) as response:
                 data = await response.json()
 
+            # Fallback to watermarked URL if aweme_detail method doesn't work
             try:
                 tiktok_video_url = data['aweme_detail']['video']['play_addr']['url_list'][0]
             except TypeError:
