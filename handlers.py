@@ -172,8 +172,8 @@ async def e621(**kwargs):
     Hander for e621.net
     '''
 
-    # Ignore posts that already have an embed
-    if kwargs['embeds'] and kwargs['embeds'][0].type in ('video'):
+    # Skip source for already embeded posts
+    if kwargs['embeds'] and kwargs['embeds'][0].thumbnail.url is not discord.Embed.Empty:
         return
 
     # Post ID from params
@@ -188,10 +188,6 @@ async def e621(**kwargs):
         async with session.get(f"https://e621.net/posts/{post_id}.json") as response:
             data = await response.json()
             post = data['post']
-
-        # # Check for global blacklist (ignore other links as they already come with previews)
-        # if 'young' not in post['tags']['general'] or post['rating'] == 's':
-        #     return
 
     embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
     embed.set_image(url=post['sample']['url'])
@@ -259,7 +255,8 @@ async def booru(**kwargs):
     page_url = kwargs['match'].group(1)
     post_id = kwargs['match'].group(2)
 
-    if kwargs['embeds'] and kwargs['embeds'][0].type in ('video'):
+    # Skip source for already embeded posts
+    if kwargs['embeds'] and kwargs['embeds'][0].thumbnail.url is not discord.Embed.Empty:
         return
 
     async with ClientSession() as session:
@@ -305,7 +302,8 @@ async def mastodon(**kwargs):
     if 'media_attachments' not in data:
         return
 
-    if kwargs['embeds'] and kwargs['embeds'][0].type in ('video'):
+    # Skip source for already embeded posts
+    if kwargs['embeds'] and kwargs['embeds'][0].thumbnail.url is not discord.Embed.Empty:
         return
 
     embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))

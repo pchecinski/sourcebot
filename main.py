@@ -90,7 +90,7 @@ parsers = [
     { 'pattern': re.compile(r"https:\/\/(?:(baraag\.net|pawoo\.net)[.@/\w]*)\/(\w+)"), 'function': handlers.mastodon },
     { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
-    { 'pattern': re.compile(r"(https:\/\/(?:(?:vm\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
+    { 'pattern': re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart }
 ]
 
@@ -132,7 +132,7 @@ async def on_message(message):
 
     # Detect if message has embeds before lookups
     if not message.embeds:
-        await asyncio.sleep(2.5)
+        await asyncio.sleep(4)
         try:
             message = await message.channel.fetch_message(message.id)
         except NotFound:
@@ -156,8 +156,8 @@ async def on_message(message):
     # Video conversion functionality
     if isinstance(message.channel, discord.DMChannel) and message.attachments:
         for attachment in message.attachments:
-            if attachment.filename.endswith('mp4'):
-                kwargs = await handlers.convert(attachment.filename, attachment.url)
+            if attachment.filename.endswith(('mp4', 'webm')):
+                kwargs = await handlers.convert(attachment.filename.replace('webm', 'mp4'), attachment.url)
                 await message.channel.send(**kwargs)
 
 @bot.event
