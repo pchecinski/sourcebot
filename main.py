@@ -91,7 +91,8 @@ parsers = [
     { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
-    { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart }
+    { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart },
+    { 'pattern': re.compile(r"(https:\/\/(?:www\.)*reddit.com\/r\/.+?\/comments\/.+?\/.+?)\/\?*"), 'function': handlers.reddit }
 ]
 
 @bot.event
@@ -142,7 +143,6 @@ async def on_message(message):
     # Match and run all supported handers
     for parser in parsers:
         for match in re.finditer(parser['pattern'], content):
-            print(f"[debug]: {parser['function'].__name__} -> {match.groups()}")
             output = await parser['function'](
                 match = match, embeds = message.embeds, is_dm = isinstance(message.channel, discord.DMChannel)
             )
@@ -150,8 +150,6 @@ async def on_message(message):
             if isinstance(output, list):
                 for kwargs in output:
                     await message.channel.send(**kwargs)
-            elif output:
-                await message.channel.send(**output)
 
     # Video conversion functionality
     if isinstance(message.channel, discord.DMChannel) and message.attachments:
@@ -183,6 +181,13 @@ async def _tiktok(ctx):
     client = MongoClient('mongodb://127.0.0.1/sourcebot')
     tiktok = client['sourcebot']['tiktok_db'].aggregate([{ "$sample": { "size": 1 } }]).next()
     await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
+
+@bot.bridge_command(name='friday')
+async def _friday(ctx):
+    '''
+    Today is Friday in California!
+    '''
+    await ctx.respond(f"{config['media']['url']}/discord-friday.mp4")
 
 # Bunbucks commands
 async def update_account(member, value):

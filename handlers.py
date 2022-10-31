@@ -10,7 +10,7 @@ import io
 import os
 import shlex
 from random import choices, randint
-from re import findall
+from re import findall, sub
 from tempfile import TemporaryDirectory
 from time import perf_counter, time_ns
 from zipfile import ZipFile
@@ -428,6 +428,36 @@ async def tiktok(**kwargs):
             })
 
     return [ { 'content': f"{config['media']['url']}/tiktok-{tiktok_id}.mp4" } ]
+
+async def reddit(**kwargs):
+    '''
+    Handler for reddit
+    '''
+    async with ClientSession() as session:
+        async with session.get(kwargs['match'].group(1) + '.json') as response:
+            data_raw = await response.json()
+            data = data_raw[0]['data']['children'][0]['data']
+            unique_id = data['subreddit_id'] + data['id']
+            video_url = data['secure_media']['reddit_video']['fallback_url']
+            audio_url = sub(r'DASH_[0-9]+\.', 'DASH_audio.', video_url)
+
+            print(unique_id, video_url, audio_url)
+
+            with TemporaryDirectory() as tmpdir:
+                async with session.get(video_url) as video, session.get(audio_url) as audio:
+                    async with aiofiles.open(f"{tmpdir}/video.mp4", 'wb') as video_f, aiofiles.open(f"{tmpdir}/audio.mp4", 'wb') as audio_f:
+                        await video_f.write(await video.read())
+                        await audio_f.write(await audio.read())
+
+                args = shlex.split(
+                    'ffmpeg -loglevel fatal -hide_banner -y -i video.mp4 -i audio.mp4 -c:v copy -c:a aac output.mp4'
+                )
+                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
+                await ffmpeg.wait()
+
+                os.rename(f"{tmpdir}/output.mp4", f"{config['media']['path']}/reddit-{unique_id}.mp4")
+
+    return [ { 'content': f"{config['media']['url']}/reddit-{unique_id}.mp4" } ]
 
 async def youtube(**kwargs):
     '''
