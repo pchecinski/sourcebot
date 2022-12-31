@@ -22,6 +22,7 @@ import faapi
 import xmltodict
 import youtube_dl
 from aiohttp import ClientSession, BasicAuth
+from mastodon import Mastodon
 from pymongo import MongoClient
 
 # Local modules
@@ -173,7 +174,7 @@ async def e621(**kwargs):
     '''
 
     # Skip source for already embeded posts
-    if kwargs['embeds'] and kwargs['embeds'][0].thumbnail.url is not discord.Embed.Empty:
+    if kwargs['message'].embeds and kwargs['message'].embeds[0].thumbnail.url is not discord.Embed.Empty:
         return
 
     # Post ID from params
@@ -256,7 +257,7 @@ async def booru(**kwargs):
     post_id = kwargs['match'].group(2)
 
     # Skip source for already embeded posts
-    if kwargs['embeds'] and kwargs['embeds'][0].thumbnail.url is not discord.Embed.Empty:
+    if kwargs['message'].embeds and kwargs['message'].embeds[0].thumbnail.url is not discord.Embed.Empty:
         return
 
     async with ClientSession() as session:
@@ -276,7 +277,7 @@ async def deviantart(**kwargs):
     # Post URL from params
     url = kwargs['match'].group(1)
 
-    if not kwargs['embeds']:
+    if not kwargs['message'].embeds:
         async with ClientSession() as session:
             async with session.get(f"https://backend.deviantart.com/oembed?url={url}") as response:
                 data = await response.json()
@@ -298,12 +299,24 @@ async def mastodon(**kwargs):
         async with session.get(f"https://{page_url}/api/v1/statuses/{post_id}") as response:
             data = await response.json()
 
+    if page_url == 'baraag.net':
+        # Code used to setup the app/access to account:
+        # Mastodon.create_app('baraag_sourcebot', api_base_url = 'https://baraag.net', to_file = 'config/baraag_clientcred.secret')
+        # mastodon = Mastodon(client_id = 'config/baraag_clientcred.secret')
+        # mastodon.log_in('email', 'password', to_file = 'config/baraag_usercred.secret')
+
+        # Alternative data source for baraag
+        await kwargs['message'].edit(suppress=True)
+        del kwargs['message'].embeds[0]
+        baraag_api = Mastodon(access_token = 'config/baraag_usercred.secret')
+        data = baraag_api.status(post_id)
+
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
         return
 
     # Skip source for already embeded posts
-    if kwargs['embeds'] and kwargs['embeds'][0].thumbnail.url is not discord.Embed.Empty:
+    if kwargs['message'].embeds and kwargs['message'].embeds[0].thumbnail.url is not discord.Embed.Empty:
         return
 
     embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
@@ -359,7 +372,7 @@ async def twitter(**kwargs):
             if tweet_data['includes']['media'][0]['type'] == 'video' or tweet_data['includes']['media'][0]['type'] == 'animated_gif':
                 return await twitter_ffmpeg(tweet_path, tweet_data['includes']['media'][0]['type'])
 
-            if not kwargs['embeds']:
+            if not kwargs['message'].embeds:
                 username = tweet_data['includes']['users'][0]['username']
                 embeds = []
                 for index, file in enumerate(tweet_data['includes']['media']):
@@ -467,7 +480,7 @@ async def youtube(**kwargs):
     video = kwargs['match'].group(1)
 
     # Only trigger this for direct messages
-    if not kwargs['is_dm']:
+    if not isinstance(kwargs['message'].channel, discord.DMChannel):
         return
 
     # Download video to temporary directory

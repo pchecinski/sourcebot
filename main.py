@@ -96,7 +96,7 @@ parsers = [
 ]
 
 @bot.event
-async def on_message(message):
+async def on_message(message: discord.Message):
     '''
     Events for each message (main functionality of the bot)
     '''
@@ -144,7 +144,7 @@ async def on_message(message):
     for parser in parsers:
         for match in re.finditer(parser['pattern'], content):
             output = await parser['function'](
-                match = match, embeds = message.embeds, is_dm = isinstance(message.channel, discord.DMChannel)
+                match = match, message = message
             )
 
             if isinstance(output, list):
