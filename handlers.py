@@ -306,8 +306,12 @@ async def mastodon(**kwargs):
         # mastodon.log_in('email', 'password', to_file = 'config/baraag_usercred.secret')
 
         # Alternative data source for baraag
-        await kwargs['message'].edit(suppress=True)
-        del kwargs['message'].embeds[0]
+        try:
+            await kwargs['message'].edit(suppress=True)
+            del kwargs['message'].embeds[0]
+        except IndexError:
+            pass
+
         baraag_api = Mastodon(access_token = 'config/baraag_usercred.secret')
         data = baraag_api.status(post_id)
 
@@ -319,9 +323,13 @@ async def mastodon(**kwargs):
     if kwargs['message'].embeds and kwargs['message'].embeds[0].thumbnail.url is not discord.Embed.Empty:
         return
 
-    embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0xFAAF3A))
-    embed.set_image(url=data['media_attachments'][0]['url'])
-    return [ { 'embed': embed } ]
+    # Parse and embed all files
+    embeds = []
+    for attachment in data['media_attachments']:
+        embed = discord.Embed(title=f"Picture by {data['account']['display_name']}", color=discord.Color(0x191B22))
+        embed.set_image(url=attachment['url'])
+        embeds.append(embed)
+    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
 async def twitter_ffmpeg(partial_url, tweet_type):
     '''
@@ -387,11 +395,12 @@ async def tiktok(**kwargs):
     '''
     # Tiktok URL from params
     message_url = kwargs['match'].group(1)
+    print(f"{message_url=}")
 
     async with ClientSession() as session:
         # Fetch tiktok_id
         session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:104.0) Gecko/20100101 Firefox/104.0'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0'
         })
         async with session.get(message_url, allow_redirects=True) as response:
             url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
@@ -406,6 +415,7 @@ async def tiktok(**kwargs):
             'tiktok_id': int(tiktok_id)
         })
 
+        print(f"{cached_data=}")
         if not cached_data:
             print(f'[debug]: tiktok -> cache not found for {tiktok_id}, fetching')
             time = time_ns()
@@ -431,8 +441,10 @@ async def tiktok(**kwargs):
             except TypeError:
                 tiktok_video_url = wmarked_url
 
+            print(f"{tiktok_video_url=}")
             with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
                 async with session.get(tiktok_video_url) as response:
+                    print(f"{response.status=}")
                     file.write(await response.read())
 
             client['sourcebot']['tiktok_db'].insert_one({
