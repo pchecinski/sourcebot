@@ -20,10 +20,10 @@ import aiofiles
 import discord
 import faapi
 import xmltodict
-import youtube_dl
 from aiohttp import ClientSession, BasicAuth
 from mastodon import Mastodon
 from pymongo import MongoClient
+from yt_dlp import YoutubeDL
 
 # Local modules
 from config import config
@@ -312,7 +312,7 @@ async def mastodon(**kwargs):
         except IndexError:
             pass
 
-        baraag_api = Mastodon(access_token = 'config/baraag_usercred.secret')
+        baraag_api = Mastodon(access_token = 'code/config/baraag_usercred.secret')
         data = baraag_api.status(post_id)
 
     # Skip statuses without media attachments
@@ -339,7 +339,7 @@ async def twitter_ffmpeg(partial_url, tweet_type):
     tweet_id = partial_url.split('/')[-1]
 
     with TemporaryDirectory() as tmpdir:
-        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
+        with YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
             meta = ydl.extract_info(f"https://twitter.com/{partial_url}")
             filename = f"{tweet_id}.{meta['ext']}"
 
@@ -389,6 +389,25 @@ async def twitter(**kwargs):
                     embeds.append(embed)
                 return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
+def tiktok_parseurl(url):
+    '''
+    Helper function for tiktok handler that returns downloadable video
+    '''
+    with YoutubeDL() as ydl:
+        videoInfo = ydl.extract_info(url, download=False)
+
+        for format in videoInfo['formats']:
+            if format['format_id'] == 'download_addr-0':
+                return format
+
+        # not found, search for the next best one
+        for format in videoInfo['formats']:
+            if format['url'].startswith('http://api'):
+                return format
+
+        # not found, return the first one
+        return videoInfo['formats'][0]
+
 async def tiktok(**kwargs):
     '''
     Handler for tiktok
@@ -417,29 +436,7 @@ async def tiktok(**kwargs):
 
         print(f"{cached_data=}")
         if not cached_data:
-            print(f'[debug]: tiktok -> cache not found for {tiktok_id}, fetching')
-            time = time_ns()
-            params = {
-                'aweme_id': tiktok_id, 'region': 'US', 'sys_region': 'US', 'op_region': 'US',
-                'ts' : int(time / 1000000000), '_rticket': int(time / 1000000), 'timezone_name': "Etc%2FGMT", 'timezone_offset': 0,
-                'device_type': "Pixel%20" + "".join(choices('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', k=8)),
-                'iid': randint(6000000000000000000, 7000000000000000000), 'device_id': randint(6000000000000000000, 7000000000000000000),
-                'locale': 'en', 'app_language': 'en', 'language': 'en', 'resolution': '1080*1920', 'version_code': 100000, 'dpi': 441,
-                'cpu_support64': '0', 'pass-route': 1, 'pass-region': 1, 'app_type': 'normal', 'aid': 1180, 'app_name': 'musical_ly',
-                'device_platform': 'android', 'device_brand': 'google', 'os_version': '8.0.0', 'channel': 'googleplay'
-            }
-
-            session.headers.update({
-                'User-Agent': 'okhttp'
-            })
-            async with session.get('https://api-t2.tiktokv.com/aweme/v1/aweme/detail/', params=params) as response:
-                data = await response.json()
-
-            # Fallback to watermarked URL if aweme_detail method doesn't work
-            try:
-                tiktok_video_url = data['aweme_detail']['video']['play_addr']['url_list'][0]
-            except TypeError:
-                tiktok_video_url = wmarked_url
+            tiktok_video_url = tiktok_parseurl(url)['url']
 
             print(f"{tiktok_video_url=}")
             with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
@@ -497,7 +494,7 @@ async def youtube(**kwargs):
 
     # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
-        with youtube_dl.YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video}.%(ext)s"}) as ydl:
+        with YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video}.%(ext)s"}) as ydl:
             meta = ydl.extract_info(f"https://youtube.com/watch?v={video}")
             filename = f"{video}.{meta['ext']}"
 

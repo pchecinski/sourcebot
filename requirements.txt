@@ -1,9 +1,9 @@
 aiofiles==0.8.0
 faapi==2.19.4
+git+https://github.com/jericjan/saucenao_api.git@master
+Mastodon.py==1.8.0
 py-cord==2.0.0b7
 pymongo==4.1.1
 PyYAML==6.0
-git+https://github.com/jericjan/saucenao_api.git@master
-Mastodon.py==1.8.0
 xmltodict==0.13.0
-youtube-dl==2021.12.17
+yt-dlp==2023.3.4
