@@ -9,10 +9,9 @@ import hashlib
 import io
 import os
 import shlex
-from random import choices, randint
-from re import findall, sub
+from re import sub
 from tempfile import TemporaryDirectory
-from time import perf_counter, time_ns
+from time import perf_counter
 from zipfile import ZipFile
 
 # Third-party libraries
@@ -415,7 +414,6 @@ async def tiktok(**kwargs):
     # Tiktok URL from params
     message_url = kwargs['match'].group(1)
     print(f"{message_url=}")
-
     async with ClientSession() as session:
         # Fetch tiktok_id
         session.headers.update({
@@ -423,8 +421,6 @@ async def tiktok(**kwargs):
         })
         async with session.get(message_url, allow_redirects=True) as response:
             url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
-            match = findall(r'"downloadAddr":"(.+?)"', await response.text())
-            wmarked_url = match[0].replace("\\u0026", '&').replace("\\u002F", '/')
 
         tiktok_id = url.split('/')[-1]
 
@@ -439,10 +435,21 @@ async def tiktok(**kwargs):
             tiktok_video_url = tiktok_parseurl(url)['url']
 
             print(f"{tiktok_video_url=}")
-            with open(f"{config['media']['path']}/tiktok-{tiktok_id}.mp4", 'wb') as file:
-                async with session.get(tiktok_video_url) as response:
-                    print(f"{response.status=}")
-                    file.write(await response.read())
+            with TemporaryDirectory() as tmpdir:
+                perf_count = perf_counter()
+                async with aiofiles.open(f"{tmpdir}/{tiktok_id}", "wb") as file, session.get(tiktok_video_url) as response:
+                    await file.write(await response.read())
+                    args = shlex.split(
+                        f"ffmpeg -loglevel fatal -hide_banner -y -i {tiktok_id} "
+                        "-c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k "
+                        f"tiktok-{tiktok_id}.mp4"
+                    )
+                    ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
+                    await ffmpeg.wait()
+
+                    os.rename(f"{tmpdir}/tiktok-{tiktok_id}.mp4", f"{config['media']['path']}/tiktok-{tiktok_id}.mp4")
+                    perf_count = perf_counter() - perf_count
+                    print(f"{perf_count=}s")
 
             client['sourcebot']['tiktok_db'].insert_one({
                 'tiktok_id': int(tiktok_id),

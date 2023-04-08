@@ -1,4 +1,4 @@
-#!/home/discordbot/sourcebot-env/bin/python3
+#!/var/lib/sourcebot/env/bin/python3.9
 # -*- coding: utf-8 -*-
 '''
 Main source code / entry point for telegram tiktok bot
