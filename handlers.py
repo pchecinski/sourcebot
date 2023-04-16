@@ -20,9 +20,11 @@ import discord
 import faapi
 import xmltodict
 from aiohttp import ClientSession, BasicAuth
+from twitter import Twitter
+from twitter.oauth import OAuth
 from mastodon import Mastodon
 from pymongo import MongoClient
-from yt_dlp import YoutubeDL
+from yt_dlp import DownloadError, YoutubeDL
 
 # Local modules
 from config import config
@@ -338,27 +340,33 @@ async def twitter_ffmpeg(partial_url, tweet_type):
     tweet_id = partial_url.split('/')[-1]
 
     with TemporaryDirectory() as tmpdir:
-        with YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
-            meta = ydl.extract_info(f"https://twitter.com/{partial_url}")
-            filename = f"{tweet_id}.{meta['ext']}"
+        try:
+            with YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
+                meta = ydl.extract_info(f"https://twitter.com/{partial_url}")
+                filename = f"{tweet_id}.{meta['ext']}"
 
-            # Convert Animated GIFs to .gif so they loop in Discord
-            if tweet_type == 'animated_gif':
-                args = shlex.split(
-                    f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} "
-                    "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                    f"{tweet_id}.gif"
-                )
-                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
-                await ffmpeg.wait()
-                filename = f"{tweet_id}.gif"
+                # Convert Animated GIFs to .gif so they loop in Discord
+                if tweet_type == 'animated_gif':
+                    args = shlex.split(
+                        f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} "
+                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
+                        f"{tweet_id}.gif"
+                    )
+                    ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
+                    await ffmpeg.wait()
+                    filename = f"{tweet_id}.gif"
+                else:
+                    raise Exception('Unsupported code called, twitter video should be parsed by new API method')
 
-            if os.stat(f"{tmpdir}/{filename}").st_size > 8388608: # 8M
-                os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/tweet-{filename}")
-                return [ { 'content': f"{config['media']['url']}/tweet-{filename}"} ]
+                if os.stat(f"{tmpdir}/{filename}").st_size > 8388608: # 8M
+                    os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/tweet-{filename}")
+                    return [ { 'content': f"{config['media']['url']}/tweet-{filename}"} ]
 
-            with open(f"{tmpdir}/{filename}", 'rb') as file:
-                return [ { 'file': discord.File(file, filename=filename) } ]
+                with open(f"{tmpdir}/{filename}", 'rb') as file:
+                    return [ { 'file': discord.File(file, filename=filename) } ]
+                
+        except DownloadError as e:
+            print('ytdl download failed')
 
 async def twitter(**kwargs):
     '''
@@ -368,6 +376,26 @@ async def twitter(**kwargs):
     tweet_path = kwargs['match'].group(1)
     tweet_id = tweet_path.split('/')[-1]
 
+    # Twitter API call for NSFW videos parsing
+    api = Twitter(auth=OAuth(
+            config['twitter']['access_token'],
+            config['twitter']['access_token_secret'],
+            config['twitter']['api_key'],
+            config['twitter']['api_key_secret']
+        )
+    )
+    tweet = api.statuses.show(_id=tweet_id, tweet_mode="extended")
+
+    ret = []
+    for media in tweet['extended_entities']['media']:
+        if media['type'] == 'video':
+            variants = sorted(filter(lambda k: k['content_type'] == 'video/mp4', media['video_info']['variants']), key=lambda k: k['bitrate'], reverse = True)
+            ret.append({ 'content' : f"{variants[0]['url']}"})
+    
+    if ret:
+        return ret
+
+    # "Legacy" method, http api call
     async with ClientSession() as session:
         session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
         async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url") as response:
