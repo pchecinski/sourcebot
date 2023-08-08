@@ -1,4 +1,4 @@
-#!/var/lib/sourcebot/env/bin/python3.9
+#!/var/lib/sourcebot/env/bin/python3
 # -*- coding: utf-8 -*-
 '''
 Main source code / entry point for sourcebot
@@ -82,7 +82,7 @@ async def handle_reaction(payload):
 # Parser regular expressions list
 parsers = [
     { 'pattern': re.compile(r"(?:pixiv\.net[\/\w]*)\/artworks\/(\w+)"), 'function': handlers.pixiv },
-    { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)"), 'function': handlers.inkbunny },
+    { 'pattern': re.compile(r"(?:https:\/\/inkbunny.net\/s\/)(\w+)(?:-p)?(\d+)?"), 'function': handlers.inkbunny },
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
     { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handlers.e621 },
     { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools },
