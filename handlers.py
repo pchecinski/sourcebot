@@ -20,8 +20,6 @@ import discord
 import faapi
 import xmltodict
 from aiohttp import ClientSession, BasicAuth
-from twitter import Twitter
-from twitter.oauth import OAuth
 from mastodon import Mastodon
 from pymongo import MongoClient
 from yt_dlp import DownloadError, YoutubeDL
@@ -145,6 +143,7 @@ async def inkbunny(**kwargs):
     '''
     # Submission ID from params
     submission_id = kwargs['match'].group(1)
+    page = kwargs['match'].group(2)
 
     async with ClientSession() as session:
         # Log in to API and get session ID
@@ -162,12 +161,18 @@ async def inkbunny(**kwargs):
     submission = data['submissions'][0]
 
     # Parse and embed all files
-    embeds = []
-    for index, file in enumerate(submission['files']):
-        embed = discord.Embed(title=f"{submission['title']} {index + 1}/{len(submission['files'])} by {submission['username']}", color=discord.Color(0xFCE4F1))
-        embed.set_image(url=file['file_url_screen'])
-        embeds.append(embed)
-    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
+    if page:
+        page_id = int(page)
+        embed = discord.Embed(title=f"{submission['title']} (image {page_id} out of {len(submission['files'])}) by {submission['username']}", color=discord.Color(0xFCE4F1))
+        embed.set_image(url=submission['files'][page_id - 1]['file_url_screen'])
+        return [ { 'embed': embed } ]
+    else:
+        embeds = []
+        for index, file in enumerate(submission['files']):
+            embed = discord.Embed(title=f"{submission['title']} {index + 1}/{len(submission['files'])} by {submission['username']}", color=discord.Color(0xFCE4F1))
+            embed.set_image(url=file['file_url_screen'])
+            embeds.append(embed)
+        return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
 async def e621(**kwargs):
     '''
@@ -240,7 +245,7 @@ async def furaffinity(**kwargs):
     ]
 
     api = faapi.FAAPI(cookies)
-    submission, _ = api.get_submission(submission_id)
+    submission, _ = api.submission(submission_id)
 
     if submission.rating == 'General':
         return
@@ -300,21 +305,21 @@ async def mastodon(**kwargs):
         async with session.get(f"https://{page_url}/api/v1/statuses/{post_id}") as response:
             data = await response.json()
 
-    if page_url == 'baraag.net':
-        # Code used to setup the app/access to account:
-        # Mastodon.create_app('baraag_sourcebot', api_base_url = 'https://baraag.net', to_file = 'config/baraag_clientcred.secret')
-        # mastodon = Mastodon(client_id = 'config/baraag_clientcred.secret')
-        # mastodon.log_in('email', 'password', to_file = 'config/baraag_usercred.secret')
+    # if page_url == 'baraag.net':
+    #     # Code used to setup the app/access to account:
+    #     # Mastodon.create_app('baraag_sourcebot', api_base_url = 'https://baraag.net', to_file = 'config/baraag_clientcred.secret')
+    #     # mastodon = Mastodon(client_id = 'config/baraag_clientcred.secret')
+    #     # mastodon.log_in('email', 'password', to_file = 'config/baraag_usercred.secret')
 
-        # Alternative data source for baraag
-        try:
-            await kwargs['message'].edit(suppress=True)
-            del kwargs['message'].embeds[0]
-        except IndexError:
-            pass
+    #     # Alternative data source for baraag
+    #     try:
+    #         await kwargs['message'].edit(suppress=True)
+    #         del kwargs['message'].embeds[0]
+    #     except IndexError:
+    #         pass
 
-        baraag_api = Mastodon(access_token = 'code/config/baraag_usercred.secret')
-        data = baraag_api.status(post_id)
+    #     baraag_api = Mastodon(access_token = 'code/config/baraag_usercred.secret')
+    #     data = baraag_api.status(post_id)
 
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
@@ -332,42 +337,6 @@ async def mastodon(**kwargs):
         embeds.append(embed)
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-async def twitter_ffmpeg(partial_url, tweet_type):
-    '''
-    Helper for twitter functionality, downloading twitter gifs & videos
-    '''
-    # Tweet ID from URL
-    tweet_id = partial_url.split('/')[-1]
-
-    with TemporaryDirectory() as tmpdir:
-        try:
-            with YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{tweet_id}.%(ext)s"}) as ydl:
-                meta = ydl.extract_info(f"https://twitter.com/{partial_url}")
-                filename = f"{tweet_id}.{meta['ext']}"
-
-                # Convert Animated GIFs to .gif so they loop in Discord
-                if tweet_type == 'animated_gif':
-                    args = shlex.split(
-                        f"ffmpeg -loglevel fatal -hide_banner -y -i {filename} "
-                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                        f"{tweet_id}.gif"
-                    )
-                    ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
-                    await ffmpeg.wait()
-                    filename = f"{tweet_id}.gif"
-                else:
-                    raise Exception('Unsupported code called, twitter video should be parsed by new API method')
-
-                if os.stat(f"{tmpdir}/{filename}").st_size > 8388608: # 8M
-                    os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/tweet-{filename}")
-                    return [ { 'content': f"{config['media']['url']}/tweet-{filename}"} ]
-
-                with open(f"{tmpdir}/{filename}", 'rb') as file:
-                    return [ { 'file': discord.File(file, filename=filename) } ]
-                
-        except DownloadError as e:
-            print('ytdl download failed')
-
 async def twitter(**kwargs):
     '''
     Hander for twitter.com
@@ -376,45 +345,34 @@ async def twitter(**kwargs):
     tweet_path = kwargs['match'].group(1)
     tweet_id = tweet_path.split('/')[-1]
 
-    # Twitter API call for NSFW videos parsing
-    api = Twitter(auth=OAuth(
-            config['twitter']['access_token'],
-            config['twitter']['access_token_secret'],
-            config['twitter']['api_key'],
-            config['twitter']['api_key_secret']
-        )
-    )
-    tweet = api.statuses.show(_id=tweet_id, tweet_mode="extended")
-
-    ret = []
-    for media in tweet['extended_entities']['media']:
-        if media['type'] == 'video':
-            variants = sorted(filter(lambda k: k['content_type'] == 'video/mp4', media['video_info']['variants']), key=lambda k: k['bitrate'], reverse = True)
-            ret.append({ 'content' : f"{variants[0]['url']}"})
-    
-    if ret:
-        return ret
-
-    # "Legacy" method, http api call
     async with ClientSession() as session:
-        session.headers.update({'Authorization': f"Bearer {config['twitter']['token']}"})
-        async with session.get(f"https://api.twitter.com/2/tweets/{tweet_id}?expansions=attachments.media_keys,author_id&media.fields=type,url") as response:
+        async with session.get(f"https://api.vxtwitter.com/sourcebot/status/{tweet_id}") as response:
             tweet_data = await response.json()
 
-            if 'includes' not in tweet_data or 'media' not in tweet_data['includes']:
-                return
+        if 'media_extended' not in tweet_data:
+            return
 
-            if tweet_data['includes']['media'][0]['type'] == 'video' or tweet_data['includes']['media'][0]['type'] == 'animated_gif':
-                return await twitter_ffmpeg(tweet_path, tweet_data['includes']['media'][0]['type'])
+        data = []
+        for media in tweet_data['media_extended']:
+            if media['type'] == 'video':
+                data.append({ 'content': media['url'] })
 
-            if not kwargs['message'].embeds:
-                username = tweet_data['includes']['users'][0]['username']
-                embeds = []
-                for index, file in enumerate(tweet_data['includes']['media']):
-                    embed = discord.Embed(title=f"Picture {index + 1}/{len(tweet_data['includes']['media'])} by {username}", color=discord.Color(0x1DA1F2))
-                    embed.set_image(url=file['url'])
-                    embeds.append(embed)
-                return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
+            if media['type'] == 'gif':
+                with TemporaryDirectory() as tmpdir:
+                    async with aiofiles.open(f"{tmpdir}/{tweet_id}", "wb") as file, session.get(media['url']) as response:
+                        await file.write(await response.read())
+                        args = shlex.split(
+                            f"ffmpeg -loglevel fatal -hide_banner -y -i {tweet_id} "
+                            "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
+                            f"{tweet_id}.gif"
+                        )
+                        ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
+                        await ffmpeg.wait()
+
+                        os.rename(f"{tmpdir}/{tweet_id}.gif", f"{config['media']['path']}/tweet-{tweet_id}.gif")
+                        data.append({ 'content': f"{config['media']['url']}/tweet-{tweet_id}.gif"})
+
+            return data
 
 def tiktok_parseurl(url):
     '''
