@@ -32,6 +32,7 @@ async def pixiv(**kwargs):
     '''
     Hander for pixiv.net
     '''
+
     # Static data for pixiv
     base_url = "https://app-api.pixiv.net"
 
@@ -141,6 +142,7 @@ async def inkbunny(**kwargs):
     '''
     Hander for inkbunny.net
     '''
+
     # Submission ID from params
     submission_id = kwargs['match'].group(1)
     page = kwargs['match'].group(2)
@@ -204,6 +206,7 @@ async def e621_pools(**kwargs):
     '''
     Hander for e621.net pools (galleries)
     '''
+
     # Pool ID from params
     pool_id = kwargs['match'].group(1)
 
@@ -236,6 +239,7 @@ async def furaffinity(**kwargs):
     '''
     Hander for furaffinity.net
     '''
+
     # Submission ID from params
     submission_id = kwargs['match'].group(1)
 
@@ -258,6 +262,7 @@ async def booru(**kwargs):
     '''
     Hander for booru sites (rule34.xxx, gelbooru.com)
     '''
+
     # URL and ID from params
     page_url = kwargs['match'].group(1)
     post_id = kwargs['match'].group(2)
@@ -341,6 +346,7 @@ async def twitter(**kwargs):
     '''
     Hander for twitter.com
     '''
+
     # Tweet ID from URL
     tweet_path = kwargs['match'].group(1)
     tweet_id = tweet_path.split('/')[-1]
@@ -378,6 +384,7 @@ def tiktok_parseurl(url):
     '''
     Helper function for tiktok handler that returns downloadable video
     '''
+
     with YoutubeDL() as ydl:
         videoInfo = ydl.extract_info(url, download=False)
 
@@ -397,9 +404,9 @@ async def tiktok(**kwargs):
     '''
     Handler for tiktok
     '''
+
     # Tiktok URL from params
     message_url = kwargs['match'].group(1)
-    print(f"{message_url=}")
     async with ClientSession() as session:
         # Fetch tiktok_id
         session.headers.update({
@@ -416,13 +423,9 @@ async def tiktok(**kwargs):
             'tiktok_id': int(tiktok_id)
         })
 
-        print(f"{cached_data=}")
         if not cached_data:
             tiktok_video_url = tiktok_parseurl(url)['url']
-
-            print(f"{tiktok_video_url=}")
             with TemporaryDirectory() as tmpdir:
-                perf_count = perf_counter()
                 async with aiofiles.open(f"{tmpdir}/{tiktok_id}", "wb") as file, session.get(tiktok_video_url) as response:
                     await file.write(await response.read())
                     args = shlex.split(
@@ -434,8 +437,6 @@ async def tiktok(**kwargs):
                     await ffmpeg.wait()
 
                     os.rename(f"{tmpdir}/tiktok-{tiktok_id}.mp4", f"{config['media']['path']}/tiktok-{tiktok_id}.mp4")
-                    perf_count = perf_counter() - perf_count
-                    print(f"{perf_count=}s")
 
             client['sourcebot']['tiktok_db'].insert_one({
                 'tiktok_id': int(tiktok_id),
@@ -448,6 +449,7 @@ async def reddit(**kwargs):
     '''
     Handler for reddit
     '''
+
     async with ClientSession() as session:
         async with session.get(kwargs['match'].group(1) + '.json') as response:
             data_raw = await response.json()
@@ -455,8 +457,6 @@ async def reddit(**kwargs):
             unique_id = data['subreddit_id'] + data['id']
             video_url = data['secure_media']['reddit_video']['fallback_url']
             audio_url = sub(r'DASH_[0-9]+\.', 'DASH_audio.', video_url)
-
-            print(unique_id, video_url, audio_url)
 
             with TemporaryDirectory() as tmpdir:
                 async with session.get(video_url) as video, session.get(audio_url) as audio:
@@ -478,6 +478,7 @@ async def youtube(**kwargs):
     '''
     Youtube downloading via url
     '''
+
     # Youtube video path from params
     video = kwargs['match'].group(1)
 
@@ -499,6 +500,7 @@ async def convert(filename, url):
     '''
     ffmpeg media converter for .mp4 and .webm
     '''
+
     with TemporaryDirectory() as tmpdir:
         init_time = perf_counter()
         async with ClientSession() as session, session.get(url) as response:
