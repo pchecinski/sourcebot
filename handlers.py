@@ -365,18 +365,20 @@ async def twitter(**kwargs):
 
             if media['type'] == 'gif':
                 with TemporaryDirectory() as tmpdir:
-                    async with aiofiles.open(f"{tmpdir}/{tweet_id}", "wb") as file, session.get(media['url']) as response:
+                    async with aiofiles.open(f"{tmpdir}/{tweet_id}.mp4", "wb") as file, session.get(media['url']) as response:
                         await file.write(await response.read())
-                        args = shlex.split(
-                            f"ffmpeg -loglevel fatal -hide_banner -y -i {tweet_id} "
-                            "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                            f"{tweet_id}.gif"
-                        )
-                        ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
-                        await ffmpeg.wait()
 
-                        os.rename(f"{tmpdir}/{tweet_id}.gif", f"{config['media']['path']}/tweet-{tweet_id}.gif")
-                        data.append({ 'content': f"{config['media']['url']}/tweet-{tweet_id}.gif"})
+                    args = shlex.split(
+                        f"ffmpeg -loglevel fatal -hide_banner -y -i {tweet_id}.mp4 "
+                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
+                        f"{tweet_id}.gif"
+                    )
+
+                    ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
+                    await ffmpeg.wait()
+
+                    os.rename(f"{tmpdir}/{tweet_id}.gif", f"{config['media']['path']}/tweet-{tweet_id}.gif")
+                    data.append({ 'content': f"{config['media']['url']}/tweet-{tweet_id}.gif"})
 
             return data
 
