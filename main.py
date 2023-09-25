@@ -13,8 +13,8 @@ import re
 import discord
 from discord.errors import NotFound
 from discord.ext import bridge
-from discord.ext.commands import has_permissions, check
-from pymongo import DESCENDING, MongoClient, ReturnDocument
+from discord.ext.commands import has_permissions
+from pymongo import MongoClient
 from saucenao_api import SauceNao
 
 # Local modules
@@ -88,7 +88,7 @@ parsers = [
     { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools },
     { 'pattern': re.compile(r"(gelbooru.com|rule34.xxx)\/.*id\=(\w+)"), 'function': handlers.booru },
     { 'pattern': re.compile(r"https:\/\/(?:(baraag\.net|pawoo\.net)[.@/\w]*)\/(\w+)"), 'function': handlers.mastodon },
-    { 'pattern': re.compile(r"(?:twitter.com\/)(\w+\/status\/\w+)"), 'function': handlers.twitter },
+    { 'pattern': re.compile(r"(?:twitter\.com|x\.com)\/(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart },
@@ -146,8 +146,13 @@ async def on_message(message: discord.Message):
             )
 
             if isinstance(output, list):
+                # Debug logs
+                logs_channel = bot.get_channel(config['discord']['logs_channel'])
+                await logs_channel.send(f"```\n{message.author=}\n{message.channel=}\n{match.groups()=}\n```")
+
                 for kwargs in output:
                     await message.channel.send(**kwargs)
+                    await logs_channel.send(**kwargs)
 
     # Video conversion functionality
     if isinstance(message.channel, discord.DMChannel) and message.attachments:
@@ -186,63 +191,6 @@ async def _friday(ctx):
     Today is Friday in California!
     '''
     await ctx.respond(f"{config['media']['url']}/discord-friday.mp4")
-
-# Bunbucks commands
-async def update_account(member, value):
-    '''
-    Helper funcion to update moneybot value by member
-    '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
-    doc = client['sourcebot']['moneybot'].find_one_and_update(
-        {'id': member.id},
-        {'$inc': {'value': value}},
-        upsert=True,
-        return_document=ReturnDocument.AFTER)
-    return doc
-
-@bot.bridge_command(name='give')
-@check(lambda ctx: ctx.guild and ctx.guild.id in config['discord']['money_guilds'])
-async def _give(ctx, member: discord.Member, value: int):
-    '''
-    Used to give another member bunbucks
-    '''
-    if ctx.author == member:
-        return await ctx.respond('You cannon transfer your own <:bun_bucks:976470729686155324> **bunbucks** to yourself. That wouldn\'t really do much, don\'t you think so?')
-
-    if value <= 0:
-        return await ctx.respond('You cannot give someone negative <:bun_bucks:976470729686155324> **bunbucks**, that would be very unapropiate!')
-
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
-    author = client['sourcebot']['moneybot'].find_one({'id': ctx.author.id})
-
-    if value > author['value']:
-        return await ctx.respond(f"You don't have enough bunbucks, you currently have <:bun_bucks:976470729686155324> **{author['value']:.0f}**.")
-
-    # Update both members balances
-    await update_account(ctx.author, -value)
-    await update_account(member, value)
-
-    client['sourcebot']['moneylogs'].insert_one({
-        'author_id': ctx.author.id, 'target_id': member.id,
-        'value': value, 'date': datetime.datetime.utcnow()
-    })
-
-    await ctx.respond(f"{ctx.author.name} gave {member.name} <:bun_bucks:976470729686155324> **{value:.0f} bunbuck{'' if value == 1 else 's'}**.")
-
-@bot.bridge_command(name='bunboard')
-@check(lambda ctx: ctx.guild and ctx.guild.id in config['discord']['money_guilds'])
-async def _bunboard(ctx):
-    '''
-    Used to give another member bunbucks
-    '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
-    embed = discord.Embed(colour=discord.Colour(0x8ba089))
-    embed.set_author(name='Bunboard')
-    embed.set_thumbnail(url='https://static.storky.dev/bun_bucks.png')
-    for doc in client['sourcebot']['moneybot'].find().sort('value', DESCENDING):
-        member = await bot.fetch_user(doc['id'])
-        embed.add_field(name=member.name, value=f"**{doc['value']:.0f} bunbuck{'' if doc['value'] == 1 else 's'}**")
-    await ctx.respond(embed=embed)
 
 # Roles commands
 @bot.bridge_command(name='list')

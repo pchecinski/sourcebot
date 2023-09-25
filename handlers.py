@@ -20,9 +20,8 @@ import discord
 import faapi
 import xmltodict
 from aiohttp import ClientSession, BasicAuth
-from mastodon import Mastodon
 from pymongo import MongoClient
-from yt_dlp import DownloadError, YoutubeDL
+from yt_dlp import YoutubeDL
 
 # Local modules
 from config import config
