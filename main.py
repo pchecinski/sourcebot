@@ -15,7 +15,6 @@ from discord.errors import NotFound
 from discord.ext import bridge
 from discord.ext.commands import has_permissions
 from pymongo import MongoClient
-from saucenao_api import SauceNao
 
 # Local modules
 import handlers
@@ -108,26 +107,6 @@ async def on_message(message: discord.Message):
 
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
-
-    # Source providing service handlers
-    if message.channel.id in config['discord']['sauce_channels'] and len(message.attachments) > 0:
-        sauce = SauceNao(config['saucenao']['token'])
-        sources = []
-
-        for attachment in message.attachments:
-            results = sauce.from_url(attachment.url)
-
-            if not results or results[0].similarity < 80:
-                continue
-
-            try:
-                sources.append(f"<{results[0].urls[0]}>")
-            except IndexError:
-                print(f"{attachment.url}, {results}")
-
-        if sources:
-            source_urls = '\n'.join(sources)
-            await message.channel.send(f"Source(s):\n{source_urls}")
 
     # Detect if message has embeds before lookups
     if not message.embeds:
