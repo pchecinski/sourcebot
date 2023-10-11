@@ -379,6 +379,12 @@ async def twitter(**kwargs):
                     os.rename(f"{tmpdir}/{tweet_id}.gif", f"{config['media']['path']}/tweet-{tweet_id}.gif")
                     data.append({ 'content': f"{config['media']['url']}/tweet-{tweet_id}.gif"})
 
+            if media['type'] == 'image':
+                # Skip source for already embeded posts
+                if kwargs['message'].embeds and kwargs['message'].embeds[0].thumbnail.url is not discord.Embed.Empty:
+                    return
+                data.append({ 'content': media['url'] })
+
             return data
 
 def tiktok_parseurl(url):
