@@ -9,6 +9,7 @@ import hashlib
 import io
 import os
 import shlex
+import shutil
 from re import sub
 from tempfile import TemporaryDirectory
 from time import perf_counter
@@ -107,7 +108,7 @@ async def pixiv(**kwargs):
                 await ffmpeg.wait()
 
                 # Move converted file to media path from temporary directory
-                os.rename(f"{tmpdir}/{illust_id}.gif", f"{config['media']['path']}/pixiv-{illust_id}.gif")
+                shutil.move(f"{tmpdir}/{illust_id}.gif", f"{config['media']['path']}/pixiv-{illust_id}.gif")
 
                 embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
                 embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}.gif")
@@ -309,22 +310,6 @@ async def mastodon(**kwargs):
         async with session.get(f"https://{page_url}/api/v1/statuses/{post_id}") as response:
             data = await response.json()
 
-    # if page_url == 'baraag.net':
-    #     # Code used to setup the app/access to account:
-    #     # Mastodon.create_app('baraag_sourcebot', api_base_url = 'https://baraag.net', to_file = 'config/baraag_clientcred.secret')
-    #     # mastodon = Mastodon(client_id = 'config/baraag_clientcred.secret')
-    #     # mastodon.log_in('email', 'password', to_file = 'config/baraag_usercred.secret')
-
-    #     # Alternative data source for baraag
-    #     try:
-    #         await kwargs['message'].edit(suppress=True)
-    #         del kwargs['message'].embeds[0]
-    #     except IndexError:
-    #         pass
-
-    #     baraag_api = Mastodon(access_token = 'code/config/baraag_usercred.secret')
-    #     data = baraag_api.status(post_id)
-
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
         return
@@ -357,10 +342,10 @@ async def twitter(**kwargs):
         if 'media_extended' not in tweet_data:
             return
 
-        data = []
+        links = []
         for media in tweet_data['media_extended']:
             if media['type'] == 'video':
-                data.append({ 'content': media['url'] })
+                links.append(media['url'])
 
             if media['type'] == 'gif':
                 with TemporaryDirectory() as tmpdir:
@@ -376,16 +361,18 @@ async def twitter(**kwargs):
                     ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                     await ffmpeg.wait()
 
-                    os.rename(f"{tmpdir}/{tweet_id}.gif", f"{config['media']['path']}/tweet-{tweet_id}.gif")
-                    data.append({ 'content': f"{config['media']['url']}/tweet-{tweet_id}.gif"})
+                    shutil.move(f"{tmpdir}/{tweet_id}.gif", f"{config['media']['path']}/tweet-{tweet_id}.gif")
+                    links.append(f"{config['media']['url']}/tweet-{tweet_id}.gif")
 
             if media['type'] == 'image':
                 # Skip source for already embeded posts
-                if kwargs['message'].embeds and kwargs['message'].embeds[0].thumbnail.url is not discord.Embed.Empty:
-                    return
-                data.append({ 'content': media['url'] })
+                # if kwargs['message'].embeds and isinstance(kwargs['message'].embeds[0].thumbnail.url, type(discord.Embed.Empty)):
+                #    return
 
-            return data
+                links.append(media['url'])
+
+        if links:
+            return [ { 'content' : "\n".join(links) } ]
 
 def tiktok_parseurl(url):
     '''
@@ -443,7 +430,7 @@ async def tiktok(**kwargs):
                     ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                     await ffmpeg.wait()
 
-                    os.rename(f"{tmpdir}/tiktok-{tiktok_id}.mp4", f"{config['media']['path']}/tiktok-{tiktok_id}.mp4")
+                    shutil.move(f"{tmpdir}/tiktok-{tiktok_id}.mp4", f"{config['media']['path']}/tiktok-{tiktok_id}.mp4")
 
             client['sourcebot']['tiktok_db'].insert_one({
                 'tiktok_id': int(tiktok_id),
@@ -477,9 +464,24 @@ async def reddit(**kwargs):
                 ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                 await ffmpeg.wait()
 
-                os.rename(f"{tmpdir}/output.mp4", f"{config['media']['path']}/reddit-{unique_id}.mp4")
+                shutil.move(f"{tmpdir}/output.mp4", f"{config['media']['path']}/reddit-{unique_id}.mp4")
 
     return [ { 'content': f"{config['media']['url']}/reddit-{unique_id}.mp4" } ]
+
+async def instagram(**kwargs):
+    '''
+    Handler for instagram
+    '''
+    reel_id = kwargs['match'].group(1)
+
+    with TemporaryDirectory() as tmpdir:
+        async with ClientSession() as session:
+            async with aiofiles.open(f"{tmpdir}/{reel_id}.mp4", "wb") as file:
+                async with session.get(f"https://www.ddinstagram.com/videos/{reel_id}/1") as response:
+                    await file.write(await response.read())
+                    shutil.move(f"{tmpdir}/{reel_id}.mp4", f"{config['media']['path']}/instagram-{reel_id}.mp4")
+
+    return [ { 'content': f"{config['media']['url']}/instagram-{reel_id}.mp4" } ]
 
 async def youtube(**kwargs):
     '''
@@ -499,7 +501,7 @@ async def youtube(**kwargs):
             meta = ydl.extract_info(f"https://youtube.com/watch?v={video}")
             filename = f"{video}.{meta['ext']}"
 
-            os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
+            shutil.move(f"{tmpdir}/{filename}", f"{config['media']['path']}/youtube-{filename}")
             return [ { 'content': f"{config['media']['url']}/youtube-{filename}"} ]
 
 # Video files converter
@@ -522,5 +524,5 @@ async def convert(filename, url):
                 await ffmpeg.wait()
                 filename = f"discord-{filename}"
 
-                os.rename(f"{tmpdir}/{filename}", f"{config['media']['path']}/{filename}")
+                shutil.move(f"{tmpdir}/{filename}", f"{config['media']['path']}/{filename}")
                 return { 'content': f"Converted {filename} to x264 in {perf_counter() - init_time:.2f}s\n{config['media']['url']}/{filename}" }

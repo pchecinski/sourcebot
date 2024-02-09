@@ -92,7 +92,8 @@ parsers = [
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart },
-    { 'pattern': re.compile(r"(https:\/\/(?:www\.)*reddit.com\/r\/.+?\/comments\/.+?\/.+?)\/\?*"), 'function': handlers.reddit }
+    { 'pattern': re.compile(r"(https:\/\/(?:www\.)*reddit.com\/r\/.+?\/comments\/.+?\/.+?)\/\?*"), 'function': handlers.reddit },
+    { 'pattern': re.compile(r"\.instagram.com\/reel\/([\w-]+)"), 'function': handlers.instagram }
 ]
 
 @bot.event
@@ -108,6 +109,18 @@ async def on_message(message: discord.Message):
 
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
+
+    # Video conversion functionality
+    if isinstance(message.channel, discord.DMChannel) and message.attachments:
+        video_attachments = False
+        for attachment in message.attachments:
+            if attachment.filename.endswith(('mp4', 'webm')):
+                kwargs = await handlers.convert(attachment.filename.replace('webm', 'mp4'), attachment.url)
+                await message.channel.send(**kwargs)
+                video_attachments = True
+        
+        if video_attachments:
+            return
 
     # Source providing service handlers
     if len(message.attachments) > 0 and isinstance(message.channel, discord.DMChannel) or message.channel.id in config['discord']['sauce_channels']:
@@ -145,18 +158,13 @@ async def on_message(message: discord.Message):
             if isinstance(output, list):
                 # Debug logs
                 logs_channel = bot.get_channel(config['discord']['logs_channel'])
-                await logs_channel.send(f"```\n{message.author=}\n{message.channel=}\n{match.groups()=}\n```")
+                if parser['function'] is not handlers.youtube:
+                    await logs_channel.send(f"```\n{message.author=}\n{message.channel=}\n{match.groups()=}\n```")
 
                 for kwargs in output:
                     await message.channel.send(**kwargs)
-                    await logs_channel.send(**kwargs)
-
-    # Video conversion functionality
-    if isinstance(message.channel, discord.DMChannel) and message.attachments:
-        for attachment in message.attachments:
-            if attachment.filename.endswith(('mp4', 'webm')):
-                kwargs = await handlers.convert(attachment.filename.replace('webm', 'mp4'), attachment.url)
-                await message.channel.send(**kwargs)
+                    if parser['function'] is not handlers.youtube:
+                        await logs_channel.send(**kwargs)
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -188,6 +196,13 @@ async def _friday(ctx):
     Today is Friday in California!
     '''
     await ctx.respond(f"{config['media']['url']}/discord-friday.mp4")
+
+@bot.bridge_command(name='flat')
+async def _flat(ctx):
+    '''
+    Today is Flat Fuck Friday!
+    '''
+    await ctx.respond(f"{config['media']['url']}/discord-flat.mov")
 
 # Roles commands
 @bot.bridge_command(name='list')
