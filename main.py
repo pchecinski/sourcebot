@@ -115,9 +115,9 @@ async def on_message(message: discord.Message):
         video_attachments = False
         for attachment in message.attachments:
             if attachment.filename.endswith(('mp4', 'webm')):
+                video_attachments = True
                 kwargs = await handlers.convert(attachment.filename.replace('webm', 'mp4'), attachment.url)
                 await message.channel.send(**kwargs)
-                video_attachments = True
         
         if video_attachments:
             return
@@ -140,13 +140,13 @@ async def on_message(message: discord.Message):
             await message.channel.send(f"Source(s):\n{source_urls}")
 
     # Detect if message has embeds before lookups
-    if not message.embeds:
-        await asyncio.sleep(4)
-        try:
-            message = await message.channel.fetch_message(message.id)
-        except NotFound:
-            # Skip further parsing on immediately deleted messages
-            return
+    # if not message.embeds:
+    #     await asyncio.sleep(4)
+    #     try:
+    #         message = await message.channel.fetch_message(message.id)
+    #     except NotFound:
+    #         # Skip further parsing on immediately deleted messages
+    #         return
 
     # Match and run all supported handers
     for parser in parsers:
