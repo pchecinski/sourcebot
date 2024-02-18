@@ -365,11 +365,10 @@ async def twitter(**kwargs):
                     links.append(f"{config['media']['url']}/tweet-{tweet_id}.gif")
 
             if media['type'] == 'image':
-                # Skip source for already embeded posts
-                # if kwargs['message'].embeds and isinstance(kwargs['message'].embeds[0].thumbnail.url, type(discord.Embed.Empty)):
-                #    return
-
-                links.append(media['url'])
+                async with session.get(f"https://publish.twitter.com/oembed?url=https://twitter.com/{tweet_path}") as response:
+                    oEmbed_data = await response.json()
+                    if 'error' in oEmbed_data:
+                        links.append(media['url'])
 
         if links:
             return [ { 'content' : "\n".join(links) } ]
