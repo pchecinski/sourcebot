@@ -10,7 +10,7 @@ import io
 import os
 import shlex
 import shutil
-from re import sub
+from re import sub, search
 from tempfile import TemporaryDirectory
 from time import perf_counter
 from zipfile import ZipFile
@@ -374,26 +374,6 @@ async def twitter(**kwargs):
         if links:
             return [ { 'content' : "\n".join(links) } ]
 
-def tiktok_parseurl(url):
-    '''
-    Helper function for tiktok handler that returns downloadable video
-    '''
-
-    with YoutubeDL() as ydl:
-        videoInfo = ydl.extract_info(url, download=False)
-
-        for format in videoInfo['formats']:
-            if format['format_id'] == 'download_addr-0':
-                return format
-
-        # not found, search for the next best one
-        for format in videoInfo['formats']:
-            if format['url'].startswith('http://api'):
-                return format
-
-        # not found, return the first one
-        return videoInfo['formats'][0]
-
 async def tiktok(**kwargs):
     '''
     Handler for tiktok
@@ -408,6 +388,7 @@ async def tiktok(**kwargs):
         })
         async with session.get(message_url, allow_redirects=True) as response:
             url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
+            vx_url = url.replace('tiktok.com', 'vxtiktok.com')
 
         tiktok_id = url.split('/')[-1]
 
@@ -418,19 +399,24 @@ async def tiktok(**kwargs):
         })
 
         if not cached_data:
-            tiktok_video_url = tiktok_parseurl(url)['url']
-            with TemporaryDirectory() as tmpdir:
-                async with aiofiles.open(f"{tmpdir}/{tiktok_id}", "wb") as file, session.get(tiktok_video_url) as response:
-                    await file.write(await response.read())
-                    args = shlex.split(
-                        f"ffmpeg -loglevel fatal -hide_banner -y -i {tiktok_id} "
-                        "-c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k "
-                        f"tiktok-{tiktok_id}.mp4"
-                    )
-                    ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
-                    await ffmpeg.wait()
+            # Fetch data from vxtiktok
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)'
+            })
+            async with session.get(vx_url) as response:
+                data_bytes = await response.read()
+                data = data_bytes.decode('utf-8')
+                direct_url = search(r'<meta property="og:video:secure_url" content="(.*?)" \/>', data).group(1)
 
-                    shutil.move(f"{tmpdir}/tiktok-{tiktok_id}.mp4", f"{config['media']['path']}/tiktok-{tiktok_id}.mp4")
+            # Download url and send it back
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            })
+            with TemporaryDirectory() as tmpdir:
+                async with aiofiles.open(f"{tmpdir}/tiktok-{tiktok_id}.mp4", "wb") as file, session.get(direct_url) as response:
+                    await file.write(await response.read())
+
+                shutil.move(f"{tmpdir}/tiktok-{tiktok_id}.mp4", f"{config['media']['path']}/tiktok-{tiktok_id}.mp4")
 
             client['sourcebot']['tiktok_db'].insert_one({
                 'tiktok_id': int(tiktok_id),
