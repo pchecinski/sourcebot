@@ -332,7 +332,8 @@ async def twitter(**kwargs):
     '''
 
     # Tweet ID from URL
-    tweet_path = kwargs['match'].group(1)
+    is_vx = bool(kwargs['match'].group(1))
+    tweet_path = kwargs['match'].group(2)
     tweet_id = tweet_path.split('/')[-1]
 
     async with ClientSession() as session:
@@ -367,7 +368,7 @@ async def twitter(**kwargs):
             if media['type'] == 'image':
                 async with session.get(f"https://publish.twitter.com/oembed?url=https://twitter.com/{tweet_path}") as response:
                     oEmbed_data = await response.json()
-                    if 'error' in oEmbed_data:
+                    if not is_vx and 'error' in oEmbed_data:
                         links.append(media['url'])
 
         if links:
@@ -403,7 +404,7 @@ async def tiktok(**kwargs):
     async with ClientSession() as session:
         # Fetch tiktok_id
         session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         })
         async with session.get(message_url, allow_redirects=True) as response:
             url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
