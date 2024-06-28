@@ -84,16 +84,20 @@ parsers = [
     { 'pattern': re.compile(r"(?:pixiv\.net[\/\w]*)\/artworks\/(\w+)"), 'function': handlers.pixiv },
     { 'pattern': re.compile(r"(?:https:\/\/inkbunny.net\/s\/)(\w+)(?:-p)?(\d+)?"), 'function': handlers.inkbunny },
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
-    { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handlers.e621 },
-    { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools },
+    # { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handlers.e621 },
     { 'pattern': re.compile(r"(gelbooru.com|rule34.xxx)\/.*id\=(\w+)"), 'function': handlers.booru },
     { 'pattern': re.compile(r"https:\/\/(?:(baraag\.net|pawoo\.net)[.@/\w]*)\/(\w+)"), 'function': handlers.mastodon },
-    { 'pattern': re.compile(r"(vx|fixv|zz)?(?:twitter\.com|x\.com)\/(\w+\/status\/\w+)"), 'function': handlers.twitter },
+    { 'pattern': re.compile(r"(fx|vx|fixv|fixup|zz)?(?:twitter\.com|x\.com)\/(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart },
     { 'pattern': re.compile(r"(https:\/\/(?:www\.)*reddit.com\/r\/.+?\/comments\/.+?\/.+?)\/\?*"), 'function': handlers.reddit },
-    { 'pattern': re.compile(r"\.instagram.com\/reel\/([\w-]+)"), 'function': handlers.instagram }
+    { 'pattern': re.compile(r"\.instagram.com\/reel\/([\w-]+)"), 'function': handlers.instagram },
+    { 'pattern': re.compile(r"(https:\/\/cohost\.org\/(\w+)\/post\/[\w\d-]+)"), 'function': handlers.cohost }
+]
+
+parsers_new = [
+    { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools }
 ]
 
 @bot.event
@@ -147,6 +151,22 @@ async def on_message(message: discord.Message):
     #     except NotFound:
     #         # Skip further parsing on immediately deleted messages
     #         return
+
+    # Match and run new parser functions
+    for parser in parsers_new:
+        for match in re.finditer(parser['pattern'], content):
+            files = await parser['function'](
+                match = match, message = message
+            )
+
+            if isinstance(files, list):
+                # Debug logs
+                logs_channel = bot.get_channel(config['discord']['logs_channel'])
+                await logs_channel.send(f"```\n{message.author=}\n{message.channel=}\n{match.groups()=}\n```")
+
+                for i in range(0, len(files), 10):
+                    await message.channel.send(files=[ discord.File(file) for file in files[i:i+10] ])
+                    await logs_channel.send(files=[ discord.File(file) for file in files[i:i+10] ])
 
     # Match and run all supported handers
     for parser in parsers:

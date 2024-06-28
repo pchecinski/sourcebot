@@ -20,7 +20,7 @@ import aiofiles
 import discord
 import faapi
 import xmltodict
-from aiohttp import ClientSession, BasicAuth
+from aiohttp import ClientSession, BasicAuth, ContentTypeError
 from pymongo import MongoClient
 from yt_dlp import YoutubeDL
 
@@ -211,7 +211,7 @@ async def e621_pools(**kwargs):
     pool_id = kwargs['match'].group(1)
 
     # Parse and embed all files
-    embeds = []
+    files = []
     async with ClientSession(auth = BasicAuth(config['e621']['username'], config['e621']['api_key'])) as session:
         session.headers.update({
             'User-Agent': f"sourcebot by {config['e621']['username']}"
@@ -220,18 +220,44 @@ async def e621_pools(**kwargs):
         # Get image data using API Endpoint
         async with session.get(f"https://e621.net/pools/{pool_id}.json") as response:
             pool_data = await response.json()
-
-            for index, submission_id in enumerate(pool_data['post_ids']):
+    
+            for submission_id in pool_data['post_ids']:
                 async with session.get(f"https://e621.net/posts/{submission_id}.json") as response:
                     data = await response.json()
                     post = data['post']
+        
+                    path = f"{config['media']['path']}/e6-{post['file']['md5']}.{post['file']['ext']}"
 
-                embed = discord.Embed(
-                    title=f"{pool_data['name']} {index + 1}/{pool_data['post_count']} by {pool_data['creator_name']}",
-                    color=discord.Color(0x00549E)
-                )
-                embed.set_image(url=post['sample']['url'])
-                embeds.append(embed)
+                    if not os.path.exists(path):
+                        async with session.get(post['file']['url']) as response, aiofiles.open(path, "wb") as file:
+                            await file.write(await response.read())    
+
+                    files.append(path)
+    return files
+
+async def cohost(**kwargs):
+    '''
+    Hander for cohost.org
+    '''
+    cohost_url = kwargs['match'].group(1)
+
+    import requests
+    from bs4 import BeautifulSoup
+
+    session = requests.Session()
+    session.cookies.set("connect.sid", config['cohost']['sid'], domain="cohost.org")
+
+    page = session.get(cohost_url)
+    soup = BeautifulSoup(page.text, "html.parser")
+
+    embeds = []
+    for figure_element in soup.find_all("figure"):
+        embed = discord.Embed(
+            title="image",
+            color=discord.Color(0x00549E)
+        )
+        embed.set_image(url=figure_element.find("img")["src"])
+        embeds.append(embed)
 
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
@@ -344,31 +370,36 @@ async def twitter(**kwargs):
             return
 
         links = []
-        for media in tweet_data['media_extended']:
+        for index, media in enumerate(tweet_data['media_extended']):
             if media['type'] == 'video':
                 links.append(media['url'])
 
             if media['type'] == 'gif':
                 with TemporaryDirectory() as tmpdir:
-                    async with aiofiles.open(f"{tmpdir}/{tweet_id}.mp4", "wb") as file, session.get(media['url']) as response:
+                    async with aiofiles.open(f"{tmpdir}/{tweet_id}-{index}.mp4", "wb") as file, session.get(media['url']) as response:
                         await file.write(await response.read())
 
                     args = shlex.split(
-                        f"ffmpeg -loglevel fatal -hide_banner -y -i {tweet_id}.mp4 "
+                        f"ffmpeg -loglevel fatal -hide_banner -y -i {tweet_id}-{index}.mp4 "
                         "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                        f"{tweet_id}.gif"
+                        f"{tweet_id}-{index}.gif"
                     )
 
                     ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
                     await ffmpeg.wait()
 
-                    shutil.move(f"{tmpdir}/{tweet_id}.gif", f"{config['media']['path']}/tweet-{tweet_id}.gif")
-                    links.append(f"{config['media']['url']}/tweet-{tweet_id}.gif")
+                    shutil.move(f"{tmpdir}/{tweet_id}-{index}.gif", f"{config['media']['path']}/tweet-{tweet_id}-{index}.gif")
+                    links.append(f"{config['media']['url']}/tweet-{tweet_id}-{index}.gif")
 
             if media['type'] == 'image':
-                async with session.get(f"https://publish.twitter.com/oembed?url=https://twitter.com/{tweet_path}") as response:
-                    oEmbed_data = await response.json()
-                    if not is_vx and 'error' in oEmbed_data:
+                async with session.get(f"https://publish.twitter.com/oembed?url=https://x.com/{tweet_path}") as response:
+                    try:
+                        oEmbed_data = await response.json()
+                        if not is_vx and 'error' in oEmbed_data:
+                            links.append(media['url'])
+
+                    except ContentTypeError as e:
+                        print('ContentTypeError! Forcing.', e.message)
                         links.append(media['url'])
 
         if links:
@@ -384,7 +415,7 @@ async def tiktok(**kwargs):
     async with ClientSession() as session:
         # Fetch tiktok_id
         session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0'
         })
         async with session.get(message_url, allow_redirects=True) as response:
             url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
@@ -410,10 +441,13 @@ async def tiktok(**kwargs):
 
             # Download url and send it back
             session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0'
             })
             with TemporaryDirectory() as tmpdir:
                 async with aiofiles.open(f"{tmpdir}/tiktok-{tiktok_id}.mp4", "wb") as file, session.get(direct_url) as response:
+                    if response.status == 403:
+                        return
+                    
                     await file.write(await response.read())
 
                 shutil.move(f"{tmpdir}/tiktok-{tiktok_id}.mp4", f"{config['media']['path']}/tiktok-{tiktok_id}.mp4")
@@ -480,6 +514,8 @@ async def youtube(**kwargs):
     # Only trigger this for direct messages
     if not isinstance(kwargs['message'].channel, discord.DMChannel):
         return
+
+    print(f"processing {video=}")
 
     # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
