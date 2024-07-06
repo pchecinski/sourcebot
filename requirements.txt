@@ -9,7 +9,7 @@ bbcode==1.1.0
 beautifulsoup4==4.12.2
 blurhash==1.1.4
 Brotli==1.0.9
-certifi==2023.7.22
+certifi>=2024.07.04
 chardet==3.0.4
 charset-normalizer==3.2.0
 decorator==5.1.1
