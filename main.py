@@ -60,7 +60,7 @@ async def handle_reaction(payload):
         return
 
     # Search for role in mongodb
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     result = client['sourcebot']['roles'].find_one({
         'guild': payload.guild_id,
         'emoji': emoji
@@ -110,6 +110,10 @@ async def on_message(message: discord.Message):
     '''
     Events for each message (main functionality of the bot)
     '''
+
+    # Optional logging - DEBUG USE ONLY
+    #print(f"(Diagnostic) Message from {message.author}: {message.content}")
+
     if message.author == bot.user:
         return
 
@@ -211,7 +215,7 @@ async def _tiktok(ctx):
     '''
     Posts a random tiktok from sourcebot's collection.
     '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     tiktok = client['sourcebot']['tiktok_db'].aggregate([{ "$sample": { "size": 1 } }]).next()
     await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
 
@@ -268,7 +272,7 @@ async def _list(ctx):
     Returns current list of roles configured for sourcebot.
     '''
     embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     for role in client['sourcebot']['roles'].find({'guild': ctx.guild.id}):
         embed.add_field(name=role['emoji'], value=f"<@&{role['role']}>")
     await ctx.respond(embed=embed)
@@ -279,7 +283,7 @@ async def _add(ctx, emoji: str, *, role: discord.Role):
     '''
     Adds a new role reaction to the sourcebot.
     '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     client['sourcebot']['roles'].insert_one({
         'guild': ctx.guild.id,
         'emoji': emoji,
@@ -293,7 +297,7 @@ async def _remove(ctx, emoji: str):
     '''
     Removes a role reaction from sourcebot list.
     '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     client['sourcebot']['roles'].delete_one({
         'guild': ctx.guild.id,
         'emoji': emoji
