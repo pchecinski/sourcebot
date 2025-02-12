@@ -1,6 +1,7 @@
 discord:
   token: "discord-bot-token"
   role_channel: "role-channel"
+  logs_channel: 567890123456789012
   sauce_channels: # Channels ids where source providing should work
     - 123456789012345678
     - 234567890123456789
@@ -29,6 +30,10 @@ inkbunny:
   username: "-"
   password: "-"
 
+rule34xxx:
+  username: "-"
+  password: "-"
+
 pixiv:
   username: "-"
   password: "-"
@@ -39,3 +44,7 @@ saucenao:
 
 twitter:
   token: "-"
+
+bsky:
+  handle: "-"
+  password: "-"
