@@ -34,6 +34,10 @@ inkbunny:
   username: "-"
   password: "-"
 
+rule34xxx:
+  username: "-"
+  password: "-"
+
 pixiv:
   username: "-"
   password: "-"
@@ -44,3 +48,7 @@ saucenao:
 
 twitter:
   token: "-"
+
+bsky:
+  handle: "-"
+  password: "-"

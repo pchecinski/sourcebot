@@ -235,32 +235,6 @@ async def e621_pools(**kwargs):
                     files.append(path)
     return files
 
-async def cohost(**kwargs):
-    '''
-    Hander for cohost.org
-    '''
-    cohost_url = kwargs['match'].group(1)
-
-    import requests
-    from bs4 import BeautifulSoup
-
-    session = requests.Session()
-    session.cookies.set("connect.sid", config['cohost']['sid'], domain="cohost.org")
-
-    page = session.get(cohost_url)
-    soup = BeautifulSoup(page.text, "html.parser")
-
-    embeds = []
-    for figure_element in soup.find_all("figure"):
-        embed = discord.Embed(
-            title="image",
-            color=discord.Color(0x00549E)
-        )
-        embed.set_image(url=figure_element.find("img")["src"])
-        embeds.append(embed)
-
-    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
-
 async def furaffinity(**kwargs):
     '''
     Hander for furaffinity.net
