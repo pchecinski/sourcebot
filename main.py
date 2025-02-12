@@ -81,7 +81,7 @@ async def handle_reaction(payload):
 
 # Parser regular expressions list
 parsers = [
-    { 'pattern': re.compile(r"(?:pixiv\.net[\/\w]*)\/artworks\/(\w+)"), 'function': handlers.pixiv },
+    # { 'pattern': re.compile(r"(?:pixiv\.net[\/\w]*)\/artworks\/(\w+)"), 'function': handlers.pixiv },
     { 'pattern': re.compile(r"(?:https:\/\/inkbunny.net\/s\/)(\w+)(?:-p)?(\d+)?"), 'function': handlers.inkbunny },
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
     # { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handlers.e621 },
@@ -93,12 +93,17 @@ parsers = [
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart },
     { 'pattern': re.compile(r"(https:\/\/(?:www\.)*reddit.com\/r\/.+?\/comments\/.+?\/.+?)\/\?*"), 'function': handlers.reddit },
     { 'pattern': re.compile(r"\.instagram.com\/reel\/([\w-]+)"), 'function': handlers.instagram },
-    { 'pattern': re.compile(r"(https:\/\/cohost\.org\/(\w+)\/post\/[\w\d-]+)"), 'function': handlers.cohost }
+    { 'pattern': re.compile(r"(https:\/\/cohost\.org\/(\w+)\/post\/[\w\d-]+)"), 'function': handlers.cohost },
+    { 'pattern': re.compile(r"https:\/\/bsky.app\/profile\/([.\w]+)\/post\/(\w+)"), 'function': handlers.bsky }
 ]
 
 parsers_new = [
     { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools }
 ]
+
+@bot.event
+async def on_ready():
+    print(bot.guilds)
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -223,6 +228,37 @@ async def _flat(ctx):
     Today is Flat Fuck Friday!
     '''
     await ctx.respond(f"{config['media']['url']}/discord-flat.mov")
+
+@bot.bridge_command(name='pies')
+async def _pies(ctx):
+    '''
+    Initiate dog protolol.
+    '''
+    await ctx.respond(f"{config['media']['url']}/protocol-dog.jpg")
+
+@bot.bridge_command(name='siec')
+async def _siec(ctx):
+    '''
+    Robicie coś z siecią?.
+    '''
+    await ctx.respond(f"{config['media']['url']}/network.png")
+
+@bot.bridge_command(name='summon')
+async def _summon(ctx, allowed_mentions = True):
+    '''
+    Summon DI.
+    '''
+    await ctx.defer()
+    await ctx.send(f"<@&1156175038043652106> summon", )
+
+@bot.bridge_command(name='ping')
+async def _ping(ctx, addr: str):
+    '''
+    Ping ip address or hostname.
+    '''
+    from ping3 import ping
+    r = ping(addr)
+    await ctx.respond(f"Ping to {addr} result: {r}")
 
 # Roles commands
 @bot.bridge_command(name='list')

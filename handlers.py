@@ -503,6 +503,65 @@ async def instagram(**kwargs):
 
     return [ { 'content': f"{config['media']['url']}/instagram-{reel_id}.mp4" } ]
 
+from atproto import Client, models
+import re
+
+async def bsky(**kwargs):
+    '''
+    Handler for bsky videos
+    '''
+    print('ok')
+
+    user_handle, post_id = kwargs['match'].groups()
+
+    # Initialize the client and authenticate
+    client = Client()
+    client.login(config['bsky']['handle'], config['bsky']['password'])
+
+    # Fetch the specific post using the extracted handle and post ID
+    try:
+        post = client.get_post(post_id, user_handle)
+    except Exception as e:
+        return f"Failed to fetch the post: {e}"
+
+    # Access the 'value' attribute where the post details are stored
+    record = post.value
+
+    # Extract the DID from the post's URI
+    did_match = re.match(r"at://(did:[^/]+)/", post.uri)
+    if not did_match:
+        return "Unable to extract DID from post URI."
+    user_did = did_match.group(1)
+
+    # Check if the record has an 'embed' and if it's of the expected type (e.g., video)
+    if record.embed and hasattr(record.embed, 'video'):
+        video_blob = record.embed.video
+
+        # Check if the video is of type 'video/mp4' or 'application/vnd.apple.mpegurl' (for .m3u8 files)
+        if video_blob.mime_type in ['video/mp4', 'application/vnd.apple.mpegurl']:
+            # Construct the video URL using the DID and reference link
+            media_url = f"https://video.bsky.app/watch/{user_did}/{video_blob.ref.link}/playlist.m3u8"
+
+            with TemporaryDirectory() as tmpdir:
+                filename = f"bsky-{video_blob.ref.link}.mp4"
+
+                args = shlex.split(
+                    f"ffmpeg -loglevel fatal -hide_banner -y -i {media_url} "
+                    "-c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k "
+                    f"{filename}"
+                )
+                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
+                await ffmpeg.wait()
+
+                shutil.move(f"{tmpdir}/{filename}", f"{config['media']['path']}/{filename}")
+                return [ { 'content': f"{config['media']['url']}/{filename}" } ]
+
+        else:
+            return "The media is not an MP4 or compatible HLS video."
+    else:
+        return "No video found in the post."
+
+
 async def youtube(**kwargs):
     '''
     Youtube downloading via url
@@ -519,7 +578,15 @@ async def youtube(**kwargs):
 
     # Download video to temporary directory
     with TemporaryDirectory() as tmpdir:
-        with YoutubeDL({'format': 'best', 'quiet': True, 'extract_flat': True, 'outtmpl': f"{tmpdir}/{video}.%(ext)s"}) as ydl:
+        ydl_opts = {
+            'format': 'bestvideo+bestaudio/best',
+            'merge_output_format': 'mp4',
+            'quiet': True,
+            'extract_flat': True,
+            'outtmpl': f"{tmpdir}/{video}.%(ext)s"
+        }
+
+        with YoutubeDL(ydl_opts) as ydl:
             meta = ydl.extract_info(f"https://youtube.com/watch?v={video}")
             filename = f"{video}.{meta['ext']}"
 
