@@ -1,8 +1,20 @@
 # Ignore configuration files
 /config/*.yml
 /config/*.secret
+/user_conf.d/*.conf
+/nginx_secrets/*.ini
+/nginx_secrets/accounts/
+/nginx_secrets/archive/
+/nginx_secrets/live/
+/nginx_secrets/renewal/
+/nginx_secrets/renewal-hooks/
+*.env
+/.venv/
 
 # Ignore logs
 *.log
 # Python specific
 __pycache__
+
+# Ignore media files
+/media/*

@@ -1,4 +1,3 @@
-
 services:
   sourcebot:
     build: .
@@ -7,6 +6,7 @@ services:
       - PYTHONUNBUFFERED=1
     volumes:
       - .:/app
+      - media:/media
     ports:
       - "8000:8000"
     depends_on:
@@ -20,5 +20,25 @@ services:
     volumes:
       - mongo_data:/data/db
 
+  nginx:
+    image: jonasal/nginx-certbot:latest
+    container_name: nginx
+    environment:
+      - CERTBOT_EMAIL
+    env_file:
+      - ./nginx-certbot.env
+    volumes:
+      - ./media:/media
+      - ./nginx_secrets:/etc/letsencrypt          # Docker managed volume (see list at the bottom)
+      - ./user_conf.d:/etc/nginx/user_conf.d    # or a host mount with a relative or full path.
+    ports:
+      - 80:80
+      - 443:443
+    depends_on:
+      - sourcebot
+
+
 volumes:
   mongo_data:
+  media:
+  nginx_secrets:

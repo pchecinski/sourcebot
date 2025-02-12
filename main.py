@@ -109,8 +109,7 @@ async def on_message(message: discord.Message):
     '''
     Events for each message (main functionality of the bot)
     '''
-
-    # Optional logging - DEBUG USE ONLY
+    # Optional logging - DEBUG USE ONLY, not recommended for production
     #print(f"(Diagnostic) Message from {message.author}: {message.content}")
 
     if message.author == bot.user:

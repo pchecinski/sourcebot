@@ -1,6 +1,9 @@
 # Use the official Python image from the Docker Hub
 FROM python:3.9-slim
 
+# Install ffmpeg
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+
 # Set the working directory in the container
 WORKDIR /app
 
@@ -21,3 +24,4 @@ EXPOSE 8000
 
 # Run the application
 CMD ["python", "main.py"]
+
