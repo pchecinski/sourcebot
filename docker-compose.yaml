@@ -21,7 +21,7 @@ services:
       - mongo_data:/data/db
 
   nginx:
-    build: ./nginx
+    image: jonasal/nginx-certbot:latest
     container_name: nginx
     env_file:
       - ./nginx-certbot.env
@@ -29,7 +29,7 @@ services:
       - ./media:/media
       - nginx_secrets:/etc/letsencrypt    # Docker managed volume (see list at the bottom)
       - ./nginx/nginx_secrets/cloudflare.ini:/etc/letsencrypt/cloudflare.ini  # Optional DNS INI file, remove if not needed
-      - ./user_conf.d:/etc/nginx/user_conf.d  # or a host mount with a relative or full path.
+      - ./nginx/user_conf.d:/etc/nginx/user_conf.d  # or a host mount with a relative or full path.
     ports:
       - 443:443
     depends_on:
