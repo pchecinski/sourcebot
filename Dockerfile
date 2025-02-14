@@ -24,4 +24,3 @@ EXPOSE 8000
 
 # Run the application
 CMD ["python", "main.py"]
-
