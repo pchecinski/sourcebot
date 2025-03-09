@@ -8,6 +8,10 @@ discord:
   money_guilds:
     - 345678901234567890
     - 456789012345678901
+  debug:
+    link_detection: true
+    handler_detection: true
+  delete_original_embeds: true
 
 mongodb:
   uri: "mongodb://mongodb:27017/" # use mongodb://127.0.0.1/sourcebot for local development, leave alone for docker
