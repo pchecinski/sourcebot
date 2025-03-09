@@ -11,6 +11,16 @@ services:
       - "8000:8000"
     depends_on:
       - mongodb
+    develop:
+      watch:
+        - action: rebuild
+          path: .
+          ignore:
+            - "*.pyc"
+            - "__pycache__/"
+            - ".git/"
+            - "media/"
+            - "*.md"
 
   mongodb:
     image: mongo:4.4
