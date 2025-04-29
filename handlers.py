@@ -4,16 +4,14 @@ Definiton of hander functions for sourcebot.
 
 # Python standard libraries
 import asyncio
-import datetime
-import hashlib
-import io
 import os
 import shlex
 import shutil
+from atproto import Client
 from re import sub, search
 from tempfile import TemporaryDirectory
 from time import perf_counter
-from zipfile import ZipFile
+import re
 
 # Third-party libraries
 import aiofiles
@@ -33,109 +31,20 @@ async def pixiv(**kwargs):
     Hander for pixiv.net
     '''
 
-    # Static data for pixiv
-    base_url = "https://app-api.pixiv.net"
-
     # Illustration ID from params
     illust_id = kwargs['match'].group(1)
 
-    # Prepare Access Token
+    print(illust_id)
+
     async with ClientSession() as session:
-        session.headers.update({
-        "User-Agent": "PixivAndroidApp/5.0.115 (Android 6.0; PixivBot)",
-        "Accept-Language": "English"
-        })
-        client_time = datetime.datetime.utcnow().replace(microsecond=0).replace(tzinfo=datetime.timezone.utc).isoformat()
-
-        # Authenticate using Refresh token
-        async with session.post(
-            url = "https://oauth.secure.pixiv.net/auth/token",
-            data = {
-                "client_id": "KzEZED7aC0vird8jWyHM38mXjNTY",
-                "client_secret": "W9JZoJe00qPvJsiyCGT3CCtC6ZUtdpKpzMbNlUGP",
-                "get_secure_url": 1,
-                "grant_type": "refresh_token",
-                "refresh_token": config['pixiv']['token']
-            },
-            headers = {
-                "X-Client-Time": client_time,
-                "X-Client-Hash": hashlib.md5(
-                    (client_time + "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c").encode("utf-8")
-                ).hexdigest()
-            },
-        ) as response:
+        async with session.get(f"https://www.phixiv.net/api/info?id={illust_id}") as response:
             data = await response.json()
-            session.headers.update({"Authorization": f"Bearer {data['access_token']}"})
 
-        # Get Illustration details
-        async with session.get(
-            url = f"{base_url}/v1/illust/detail",
-            params = { "illust_id": illust_id },
-        ) as response:
-            data = await response.json()
-            session.headers.update({
-                "Referer": f"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={illust_id}"
-            })
-
-        if data['illust']['type'] == 'ugoira':
-            # Get file metadata (framges and zip_url)
-            async with session.get(
-                url = f"{base_url}/v1/ugoira/metadata",
-                params = { "illust_id": illust_id },
-            ) as response:
-                metadata = await response.json()
-
-            # Download and extract zip archive to temporary directory
-            with TemporaryDirectory() as tmpdir:
-                async with session.get(metadata['ugoira_metadata']['zip_urls']['medium']) as response:
-                    with ZipFile(io.BytesIO(await response.read()), 'r') as zip_ref:
-                        zip_ref.extractall(tmpdir)
-
-                # Prepare ffmpeg "concat demuxer" file
-                async with aiofiles.open(f"{tmpdir}/ffconcat.txt", 'w') as file:
-                    for frame in metadata['ugoira_metadata']['frames']:
-                        frame_file = frame['file']
-                        frame_duration = round(frame['delay'] / 1000, 4)
-                        await file.write(f"file {frame_file}\nduration {frame_duration}\n")
-
-                # Run ffmpeg for the given file/directory
-                args = shlex.split(
-                    f"ffmpeg -loglevel fatal -hide_banner -y -f concat -i ffconcat.txt "
-                    "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                    f"{illust_id}.gif"
-                )
-                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
-                await ffmpeg.wait()
-
-                # Move converted file to media path from temporary directory
-                shutil.move(f"{tmpdir}/{illust_id}.gif", f"{config['media']['path']}/pixiv-{illust_id}.gif")
-
-                embed = discord.Embed(title=f"{data['illust']['title']} by {data['illust']['user']['name']}", color=discord.Color(0x40C2FF))
-                embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}.gif")
-                return [ { 'embed': embed } ]
-        else:
-            if data['illust']['meta_single_page']:
-                urls = [ data['illust']['meta_single_page']['original_image_url'] ]
-            else:
-                urls = [ url['image_urls']['original'] for url in data['illust']['meta_pages'] ]
-
-            embeds = []
-            for index, url in enumerate(urls):
-                # Prepare the embed object
-                embed = discord.Embed(
-                    title=f"{data['illust']['title']} {index + 1}/{len(urls)} by {data['illust']['user']['name']}",
-                    color=discord.Color(0x40C2FF)
-                )
-
-                ext = os.path.splitext(url)[1]
-                async with session.get(url) as response:
-                    with open(f"{config['media']['path']}/pixiv-{illust_id}_{index}{ext}", 'wb') as file:
-                        file.write(await response.read())
-
-                    embed.set_image(url=f"{config['media']['url']}/pixiv-{illust_id}_{index}{ext}")
-                    embeds.append(embed)
-
-    # Parse and embed all files
+    embeds = []
+    for index, url in enumerate(data['image_proxy_urls']):
+        embed = discord.Embed(title=f"{data['title']} {index + 1}/{len(data['image_proxy_urls'])} by {data['author_name']}", color=discord.Color(0xFCE4F1))
+        embed.set_image(url=url)
+        embeds.append(embed)
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
 async def inkbunny(**kwargs):
@@ -477,9 +386,6 @@ async def instagram(**kwargs):
 
     return [ { 'content': f"{config['media']['url']}/instagram-{reel_id}.mp4" } ]
 
-from atproto import Client, models
-import re
-
 async def bsky(**kwargs):
     '''
     Handler for bsky videos
@@ -534,7 +440,6 @@ async def bsky(**kwargs):
             return "The media is not an MP4 or compatible HLS video."
     else:
         return "No video found in the post."
-
 
 async def youtube(**kwargs):
     '''
