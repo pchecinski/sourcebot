@@ -243,12 +243,12 @@ async def _siec(ctx):
     await ctx.respond(f"{config['media']['url']}/network.png")
 
 @bot.bridge_command(name='summon')
-async def _summon(ctx, allowed_mentions = True):
+async def _summon(ctx):
     '''
     Summon DI.
     '''
-    await ctx.defer()
-    await ctx.send(f"<@&1156175038043652106> summon", )
+    role_id = 1364549167619375114 # Role ID to mention
+    await ctx.respond(f"<@&{role_id}> summon", allowed_mentions=discord.AllowedMentions(roles=True))
 
 @bot.bridge_command(name='ping')
 async def _ping(ctx, addr: str):
