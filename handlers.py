@@ -307,7 +307,7 @@ async def tiktok(**kwargs):
         tiktok_id = url.split('/')[-1]
 
         # Prepare mongodb connection
-        client = MongoClient("mongodb://127.0.0.1/sourcebot")
+        client = MongoClient(config['mongodb']['uri'])
         cached_data = client['sourcebot']['tiktok_db'].find_one({
             'tiktok_id': int(tiktok_id)
         })

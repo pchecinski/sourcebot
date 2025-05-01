@@ -1,13 +1,21 @@
 discord:
   token: "discord-bot-token"
   role_channel: "role-channel"
-  logs_channel: 567890123456789012
+  logs_channel: 123456789012345678
   sauce_channels: # Channels ids where source providing should work
     - 123456789012345678
     - 234567890123456789
   money_guilds:
     - 345678901234567890
     - 456789012345678901
+  debug:
+    link_detection: true
+    handler_detection: true
+  delete_original_embeds: true
+
+mongodb:
+  uri: "mongodb://mongodb:27017/" # use mongodb://127.0.0.1/sourcebot for local development, leave alone for docker
+  db: "sourcebot"
 
 telegram:
   token: "-"

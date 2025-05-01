@@ -28,6 +28,9 @@ bot = bridge.Bot(command_prefix='$', intents=intents)
 # Spoiler regular expression
 spoiler_regex = re.compile(r"(\|\|.*?\|\||\<.*?\>|\`.*?\`)", re.DOTALL)
 
+# URL detection regular expression
+url_regex = re.compile(r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[^\s]*')
+
 # Role reactions
 async def handle_reaction(payload):
     '''
@@ -60,7 +63,7 @@ async def handle_reaction(payload):
         return
 
     # Search for role in mongodb
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     result = client['sourcebot']['roles'].find_one({
         'guild': payload.guild_id,
         'emoji': emoji
@@ -109,11 +112,21 @@ async def on_message(message: discord.Message):
     '''
     Events for each message (main functionality of the bot)
     '''
+    # Optional logging - DEBUG USE ONLY, not recommended for production
+    #print(f"(Diagnostic) Message from {message.author}: {message.content}")
+
     if message.author == bot.user:
         return
 
     # Process prefix commands
     await bot.process_commands(message)
+
+    # Debug message for links in messages
+    if url_regex.search(message.content) and config['discord'].get('debug', {}).get('link_detection', False):
+        print(f"[DEBUG] Link detected in message from {message.author} (ID: {message.author.id}) in channel {message.channel.name if hasattr(message.channel, 'name') else 'DM'}")
+        print(f"[DEBUG] Message content: {message.content}")
+        print(f"[DEBUG] Links found: {[match.group(0) for match in url_regex.finditer(message.content)]}")
+        print("-" * 50)
 
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
@@ -164,9 +177,29 @@ async def on_message(message: discord.Message):
             )
 
             if isinstance(files, list):
-                # Debug logs
+                # Debug logs to console
+                if config['discord'].get('debug', {}).get('handler_detection', False):
+                    print(f"[DEBUG] Handler successfully processed: {parser['function'].__name__}")
+                    print(f"[DEBUG] Match groups: {match.groups()}")
+                    print(f"[DEBUG] From user: {message.author} in channel: {message.channel.name if hasattr(message.channel, 'name') else 'DM'}")
+                    print("-" * 50)
+                
+                # Debug logs to Discord channel
                 logs_channel = bot.get_channel(config['discord']['logs_channel'])
                 await logs_channel.send(f"```\n{message.author=}\n{message.channel=}\n{match.groups()=}\n```")
+
+                # Delete original message embeds if configured
+                if config['discord'].get('delete_original_embeds', False) and not isinstance(message.channel, discord.DMChannel):
+                    try:
+                        await message.edit(suppress=True)
+                        if config['discord'].get('debug', {}).get('handler_detection', False):
+                            print(f"[DEBUG] Deleted embeds from message: {message.id}")
+                    except discord.Forbidden:
+                        if config['discord'].get('debug', {}).get('handler_detection', False):
+                            print(f"[DEBUG] No permission to delete embeds from message: {message.id}")
+                    except Exception as e:
+                        if config['discord'].get('debug', {}).get('handler_detection', False):
+                            print(f"[DEBUG] Error deleting embeds from message: {message.id}, Error: {str(e)}")
 
                 for i in range(0, len(files), 10):
                     await message.channel.send(files=[ discord.File(file) for file in files[i:i+10] ])
@@ -180,10 +213,30 @@ async def on_message(message: discord.Message):
             )
 
             if isinstance(output, list):
-                # Debug logs
+                # Debug logs to console
+                if config['discord'].get('debug', {}).get('handler_detection', False):
+                    print(f"[DEBUG] Handler successfully processed: {parser['function'].__name__}")
+                    print(f"[DEBUG] Match groups: {match.groups()}")
+                    print(f"[DEBUG] From user: {message.author} in channel: {message.channel.name if hasattr(message.channel, 'name') else 'DM'}")
+                    print("-" * 50)
+                
+                # Debug logs to Discord channel
                 logs_channel = bot.get_channel(config['discord']['logs_channel'])
                 if parser['function'] is not handlers.youtube:
                     await logs_channel.send(f"```\n{message.author=}\n{message.channel=}\n{match.groups()=}\n```")
+
+                # Delete original message embeds if configured
+                if config['discord'].get('delete_original_embeds', False) and not isinstance(message.channel, discord.DMChannel):
+                    try:
+                        await message.edit(suppress=True)
+                        if config['discord'].get('debug', {}).get('handler_detection', False):
+                            print(f"[DEBUG] Deleted embeds from message: {message.id}")
+                    except discord.Forbidden:
+                        if config['discord'].get('debug', {}).get('handler_detection', False):
+                            print(f"[DEBUG] No permission to delete embeds from message: {message.id}")
+                    except Exception as e:
+                        if config['discord'].get('debug', {}).get('handler_detection', False):
+                            print(f"[DEBUG] Error deleting embeds from message: {message.id}, Error: {str(e)}")
 
                 for kwargs in output:
                     await message.channel.send(**kwargs)
@@ -210,7 +263,7 @@ async def _tiktok(ctx):
     '''
     Posts a random tiktok from sourcebot's collection.
     '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     tiktok = client['sourcebot']['tiktok_db'].aggregate([{ "$sample": { "size": 1 } }]).next()
     await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
 
@@ -267,7 +320,7 @@ async def _list(ctx):
     Returns current list of roles configured for sourcebot.
     '''
     embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     for role in client['sourcebot']['roles'].find({'guild': ctx.guild.id}):
         embed.add_field(name=role['emoji'], value=f"<@&{role['role']}>")
     await ctx.respond(embed=embed)
@@ -278,7 +331,7 @@ async def _add(ctx, emoji: str, *, role: discord.Role):
     '''
     Adds a new role reaction to the sourcebot.
     '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     client['sourcebot']['roles'].insert_one({
         'guild': ctx.guild.id,
         'emoji': emoji,
@@ -292,7 +345,7 @@ async def _remove(ctx, emoji: str):
     '''
     Removes a role reaction from sourcebot list.
     '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
+    client = MongoClient(config['mongodb']['uri'])
     client['sourcebot']['roles'].delete_one({
         'guild': ctx.guild.id,
         'emoji': emoji

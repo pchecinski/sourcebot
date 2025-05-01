@@ -1,0 +1,54 @@
+services:
+  sourcebot:
+    build: .
+    container_name: sourcebot
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
+      - media:/media
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongodb
+    develop:
+      watch:
+        - action: rebuild
+          path: .
+          ignore:
+            - "*.pyc"
+            - "__pycache__/"
+            - ".git/"
+            - "media/"
+            - "*.md"
+
+  mongodb:
+    image: mongo:4.4
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  nginx:
+    image: jonasal/nginx-certbot:latest
+    container_name: nginx
+    env_file:
+      - ./nginx-certbot.env
+    volumes:
+      - ./media:/media
+      - nginx_secrets:/etc/letsencrypt    # Docker managed volume (see list at the bottom)
+      - ./nginx/nginx_secrets/cloudflare.ini:/etc/letsencrypt/cloudflare.ini  # Optional DNS INI file, remove if not needed
+      - ./nginx/user_conf.d:/etc/nginx/user_conf.d  # or a host mount with a relative or full path.
+    ports:
+      - 443:443
+    depends_on:
+      - sourcebot
+
+
+volumes:
+  mongo_data:
+  media:
+  nginx_secrets:
+  user_conf.d:
+  
