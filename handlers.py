@@ -246,44 +246,48 @@ async def twitter(**kwargs):
     tweet_id = tweet_path.split('/')[-1]
 
     async with ClientSession() as session:
-        async with session.get(f"https://api.vxtwitter.com/sourcebot/status/{tweet_id}") as response:
+        async with session.get(f"https://api.fxtwitter.com/sourcebot/status/{tweet_id}") as response:
             tweet_data = await response.json()
 
-        if 'media_extended' not in tweet_data:
+        if tweet_data['code'] != 200 or 'tweet' not in tweet_data or 'media' not in tweet_data['tweet']:
             return
+        
+        media = tweet_data['tweet']['media']
 
         links = []
-        for index, media in enumerate(tweet_data['media_extended']):
-            if media['type'] == 'video':
-                links.append(media['url'])
+        if 'videos' in media:
+            for index, video in enumerate(media['videos']):
+                if video['type'] == 'gif':
+                    with TemporaryDirectory() as tmpdir:
+                        async with aiofiles.open(f"{tmpdir}/{tweet_id}-{index}.mp4", "wb") as file, session.get(video['url']) as response:
+                            await file.write(await response.read())
 
-            if media['type'] == 'gif':
-                with TemporaryDirectory() as tmpdir:
-                    async with aiofiles.open(f"{tmpdir}/{tweet_id}-{index}.mp4", "wb") as file, session.get(media['url']) as response:
-                        await file.write(await response.read())
+                        args = shlex.split(
+                            f"ffmpeg -loglevel fatal -hide_banner -y -i {tweet_id}-{index}.mp4 "
+                            "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
+                            f"{tweet_id}-{index}.gif"
+                        )
 
-                    args = shlex.split(
-                        f"ffmpeg -loglevel fatal -hide_banner -y -i {tweet_id}-{index}.mp4 "
-                        "-vf 'scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse' -loop 0 "
-                        f"{tweet_id}-{index}.gif"
-                    )
+                        ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
+                        await ffmpeg.wait()
 
-                    ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
-                    await ffmpeg.wait()
+                        shutil.move(f"{tmpdir}/{tweet_id}-{index}.gif", f"{config['media']['path']}/tweet-{tweet_id}-{index}.gif")
+                        links.append(f"{config['media']['url']}/tweet-{tweet_id}-{index}.gif")
+                else:
+                    links.append(video['url'])
 
-                    shutil.move(f"{tmpdir}/{tweet_id}-{index}.gif", f"{config['media']['path']}/tweet-{tweet_id}-{index}.gif")
-                    links.append(f"{config['media']['url']}/tweet-{tweet_id}-{index}.gif")
+        if 'photos' in media:
+            async with session.get(f"https://publish.twitter.com/oembed?url=https://x.com/{tweet_path}") as response:
+                try:
+                    oEmbed_data = await response.json()
+                    if not is_vx and 'error' in oEmbed_data:
+                        for photos in media['photos']:
+                            links.append(photos['url'])
 
-            if media['type'] == 'image':
-                async with session.get(f"https://publish.twitter.com/oembed?url=https://x.com/{tweet_path}") as response:
-                    try:
-                        oEmbed_data = await response.json()
-                        if not is_vx and 'error' in oEmbed_data:
-                            links.append(media['url'])
-
-                    except ContentTypeError as e:
-                        print('ContentTypeError! Forcing.', e.message)
-                        links.append(media['url'])
+                except ContentTypeError as e:
+                    print('ContentTypeError! Forcing.', e.message)
+                    for photos in media['photos']:
+                        links.append(photos['url'])
 
         if links:
             return [ { 'content' : "\n".join(links) } ]

@@ -4,5 +4,9 @@
 
 # Ignore logs
 *.log
+
 # Python specific
 __pycache__
+
+# Dev 
+.vscode
