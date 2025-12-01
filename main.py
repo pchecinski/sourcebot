@@ -17,6 +17,11 @@ from discord.ext.commands import has_permissions
 from pymongo import MongoClient
 from pysaucenao import SauceNao
 
+# atproto ignore warning
+import warnings
+from pydantic import warnings as pw
+warnings.filterwarnings("ignore", category=pw.UnsupportedFieldAttributeWarning)
+
 # Local modules
 import handlers
 from config import config
@@ -82,7 +87,6 @@ async def handle_reaction(payload):
 # Parser regular expressions list
 parsers = [
     { 'pattern': re.compile(r"(?:pixiv\.net[\/\w]*)\/artworks\/(\w+)"), 'function': handlers.pixiv },
-    { 'pattern': re.compile(r"(?:https:\/\/inkbunny.net\/s\/)(\w+)(?:-p)?(\d+)?"), 'function': handlers.inkbunny },
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
     # { 'pattern': re.compile(r"(?<=https://e621.net/posts/)(\w+)"), 'function': handlers.e621 },
     { 'pattern': re.compile(r"(gelbooru.com|rule34.xxx)\/.*id\=(\w+)"), 'function': handlers.booru },
@@ -97,7 +101,8 @@ parsers = [
 ]
 
 parsers_new = [
-    { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools }
+    { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools },
+    { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)(?:-p)?(\d+)?"), 'function': handlers.inkbunny },
 ]
 
 @bot.event
@@ -142,15 +147,6 @@ async def on_message(message: discord.Message):
         if sources:
             source_urls = '\n'.join(sources)
             await message.channel.send(f"Source(s):\n{source_urls}")
-
-    # Detect if message has embeds before lookups
-    # if not message.embeds:
-    #     await asyncio.sleep(4)
-    #     try:
-    #         message = await message.channel.fetch_message(message.id)
-    #     except NotFound:
-    #         # Skip further parsing on immediately deleted messages
-    #         return
 
     # Match and run new parser functions
     for parser in parsers_new:
