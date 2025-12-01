@@ -68,22 +68,31 @@ async def inkbunny(**kwargs):
         async with session.get(f"https://inkbunny.net/api_submissions.php?sid={session_id}&submission_ids={submission_id}") as response:
             data = await response.json()
 
-    # Get submission data
-    submission = data['submissions'][0]
+        # Get submission data
+        submission = data['submissions'][0]
 
-    # Parse and embed all files
-    if page:
-        page_id = int(page)
-        embed = discord.Embed(title=f"{submission['title']} (image {page_id} out of {len(submission['files'])}) by {submission['username']}", color=discord.Color(0xFCE4F1))
-        embed.set_image(url=submission['files'][page_id - 1]['file_url_screen'])
-        return [ { 'embed': embed } ]
-    else:
-        embeds = []
-        for index, file in enumerate(submission['files']):
-            embed = discord.Embed(title=f"{submission['title']} {index + 1}/{len(submission['files'])} by {submission['username']}", color=discord.Color(0xFCE4F1))
-            embed.set_image(url=file['file_url_screen'])
-            embeds.append(embed)
-        return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
+        # Parse and embed all files
+        files = []
+
+        # Parse and embed all files
+        if page:
+            page_id = int(page)
+            
+            path = f"{config['media']['path']}/inkbunny-{submission['files'][page_id - 1]['file_name']}"
+            if not os.path.exists(path):
+                async with session.get(submission['files'][page_id - 1]['file_url_full']) as response, aiofiles.open(path, "wb") as file:
+                    await file.write(await response.read()) 
+            files.append(path)
+
+        else:
+            for submission_file in submission['files']:
+                path = f"{config['media']['path']}/inkbunny-{submission_file['file_name']}"
+                if not os.path.exists(path):
+                    async with session.get(submission_file['file_url_full']) as response, aiofiles.open(path, "wb") as file:
+                        await file.write(await response.read()) 
+                files.append(path)
+    
+    return files
 
 async def e621(**kwargs):
     '''
@@ -384,7 +393,7 @@ async def instagram(**kwargs):
     with TemporaryDirectory() as tmpdir:
         async with ClientSession() as session:
             async with aiofiles.open(f"{tmpdir}/{reel_id}.mp4", "wb") as file:
-                async with session.get(f"https://www.ddinstagram.com/videos/{reel_id}/1") as response:
+                async with session.get(f"https://www.vxinstagram.com/videos/{reel_id}") as response:
                     await file.write(await response.read())
                     shutil.move(f"{tmpdir}/{reel_id}.mp4", f"{config['media']['path']}/instagram-{reel_id}.mp4")
 
