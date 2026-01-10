@@ -73,8 +73,6 @@ async def inkbunny(**kwargs):
 
         # Parse and embed all files
         files = []
-
-        # Parse and embed all files
         if page:
             page_id = int(page)
             
@@ -220,20 +218,22 @@ async def mastodon(**kwargs):
     Hander for mastodon (baraag.net, pawoo.net)
     '''
 
-    # URL and ID from params
-    page_url = kwargs['match'].group(1)
+    # post, domain and ID from params
+    post_url = kwargs['match'].group(0)
+    domain_url = kwargs['match'].group(1)
     post_id = kwargs['match'].group(2)
 
     async with ClientSession() as session:
-        async with session.get(f"https://{page_url}/api/v1/statuses/{post_id}") as response:
+        async with session.get(f"https://{domain_url}/api/oembed?url={post_url}") as response:
+            # Skip links that return valid embed
+            if response.status == 200:
+                return
+
+        async with session.get(f"https://{domain_url}/api/v1/statuses/{post_id}") as response:
             data = await response.json()
 
     # Skip statuses without media attachments
     if 'media_attachments' not in data:
-        return
-
-    # Skip source for already embeded posts
-    if kwargs['message'].embeds and kwargs['message'].embeds[0].thumbnail.url is not discord.Embed.Empty:
         return
 
     # Parse and embed all files
