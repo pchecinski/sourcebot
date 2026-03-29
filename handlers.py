@@ -244,6 +244,14 @@ async def mastodon(**kwargs):
         embeds.append(embed)
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
+twitter_ai = [
+    'AZoomerrr'
+]
+
+bsky_ai = [
+    'l3nkart.bsky.social'
+]
+
 async def twitter(**kwargs):
     '''
     Hander for twitter.com
@@ -260,7 +268,12 @@ async def twitter(**kwargs):
 
         if tweet_data['code'] != 200 or 'tweet' not in tweet_data or 'media' not in tweet_data['tweet']:
             return
-        
+
+        if tweet_data['tweet']['author']['screen_name'] in twitter_ai:
+            await kwargs['message'].edit(suppress=True)
+            await kwargs['message'].add_reaction("<:ai:1486104620471160964>")
+            return
+
         media = tweet_data['tweet']['media']
 
         links = []
@@ -403,9 +416,12 @@ async def bsky(**kwargs):
     '''
     Handler for bsky videos
     '''
-    print('ok')
-
     user_handle, post_id = kwargs['match'].groups()
+
+    if user_handle in bsky_ai:
+        await kwargs['message'].edit(suppress=True)
+        await kwargs['message'].add_reaction("<:ai:1486104620471160964>")
+        return
 
     # Initialize the client and authenticate
     client = Client()

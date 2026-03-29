@@ -1,6 +1,7 @@
 # Ignore configuration files
 /config/*.yml
 /config/*.secret
+/subproject/*
 
 # Ignore logs
 *.log
