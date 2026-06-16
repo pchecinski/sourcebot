@@ -328,7 +328,7 @@ async def tiktok(**kwargs):
         })
         async with session.get(message_url, allow_redirects=True) as response:
             url = str(response.url).split('?', maxsplit=1)[0] # remove all the junk in query data
-            vx_url = url.replace('tiktok.com', 'vxtiktok.com')
+            kk_url = url.replace('tiktok.com', 'kktiktok.com')
 
         tiktok_id = url.split('/')[-1]
 
@@ -339,21 +339,13 @@ async def tiktok(**kwargs):
         })
 
         if not cached_data:
-            # Fetch data from vxtiktok
+            # Fetch data from kktiktok
             session.headers.update({
                 'User-Agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)'
             })
-            async with session.get(vx_url) as response:
-                data_bytes = await response.read()
-                data = data_bytes.decode('utf-8')
-                direct_url = search(r'<meta property="og:video:secure_url" content="(.*?)" \/>', data).group(1)
 
-            # Download url and send it back
-            session.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0'
-            })
             with TemporaryDirectory() as tmpdir:
-                async with aiofiles.open(f"{tmpdir}/tiktok-{tiktok_id}.mp4", "wb") as file, session.get(direct_url) as response:
+                async with aiofiles.open(f"{tmpdir}/tiktok-{tiktok_id}.mp4", "wb") as file, session.get(kk_url) as response:
                     if response.status == 403:
                         return
                     

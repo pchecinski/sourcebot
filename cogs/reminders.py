@@ -1,4 +1,5 @@
 import asyncio
+import discord
 from datetime import datetime
 from discord.ext import bridge, commands
 from pymongo import MongoClient
@@ -11,21 +12,21 @@ class Reminders(commands.Cog):
         self.bot = bot
 
     def _schedule(self, reminder):
-        """Schedule a single reminder dict as a background task."""
         asyncio.create_task(self._fire(reminder))
 
     async def _fire(self, reminder):
         now = datetime.now()
-        target = reminder['target']
-        delay = (target - now).total_seconds()
+        delay = (reminder['target'] - now).total_seconds()
 
         if delay > 0:
             await asyncio.sleep(delay)
 
-        channel = self.bot.get_channel(reminder['channel_id'])
         user = self.bot.get_user(reminder['user_id'])
-        if channel and user:
-            await channel.send(f"⏰ {user.mention} Reminder: **{reminder['message']}**")
+        if not user:
+            return
+
+        channel = self.bot.get_channel(reminder['channel_id']) or await user.create_dm()
+        await channel.send(f"⏰ {user.mention} Reminder: **{reminder['message']}**")
 
         reminders_col.delete_one({'_id': reminder['_id']})
 
@@ -90,6 +91,27 @@ class Reminders(commands.Cog):
         self._schedule(reminder)
         await ctx.respond(f"✅ I'll remind you at **{target.strftime('%Y-%m-%d %H:%M')}**: *{message}*")
 
+    @bridge.bridge_command(name='reminders')
+    async def _reminders(self, ctx):
+        '''List your pending reminders.'''
+        pending = list(reminders_col.find({
+            'user_id': ctx.author.id,
+            'target': {'$gt': datetime.now()}
+        }).sort('target', 1))
+
+        if not pending:
+            await ctx.respond("You have no pending reminders.")
+            return
+
+        embed = discord.Embed(title="Your pending reminders", colour=discord.Colour(0x8ba089))
+        for reminder in pending:
+            embed.add_field(
+                name=reminder['target'].strftime('%Y-%m-%d %H:%M'),
+                value=reminder['message'],
+                inline=False
+            )
+
+        await ctx.respond(embed=embed)
 
 def setup(bot):
     bot.add_cog(Reminders(bot))
