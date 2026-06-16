@@ -5,16 +5,11 @@ Main source code / entry point for sourcebot
 '''
 
 # Python standard libraries
-import asyncio
-import datetime
 import re
 
 # Third-party libraries
 import discord
-from discord.errors import NotFound
 from discord.ext import bridge
-from discord.ext.commands import has_permissions, is_owner
-from pymongo import MongoClient
 from pysaucenao import SauceNao
 
 # atproto ignore warning
@@ -32,57 +27,6 @@ bot = bridge.Bot(command_prefix='$', intents=intents)
 
 # Spoiler regular expression
 spoiler_regex = re.compile(r"(\|\|.*?\|\||\<.*?\>|\`.*?\`)", re.DOTALL)
-
-# Role reactions
-async def handle_reaction(payload):
-    '''
-    Hander for reactions (removing bot's messages & roles in guilds)
-    '''
-    # Parse emoji as string (works for custom emojis and unicode)
-    emoji = str(payload.emoji)
-
-    # Get channel object, pass on None
-    channel = bot.get_channel(payload.channel_id)
-    if channel is None:
-        return
-
-    # Fetch message and guild
-    message = await channel.fetch_message(payload.message_id)
-    guild = bot.get_guild(payload.guild_id)
-    if guild is None:
-        return
-
-    # Fetch member
-    member = guild.get_member(payload.user_id)
-
-    # Remove bots message on "x" reaction
-    if payload.event_type == 'REACTION_ADD' and message.author == bot.user and emoji == '❌':
-        await message.delete()
-        return
-
-    # Check if reaction was added/removed in the right channel
-    if not channel.name == config['discord']['role_channel']:
-        return
-
-    # Search for role in mongodb
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
-    result = client['sourcebot']['roles'].find_one({
-        'guild': payload.guild_id,
-        'emoji': emoji
-    })
-
-    # Handle reaction if role was found
-    if result:
-        role = guild.get_role(result['role'])
-        if payload.event_type == 'REACTION_ADD':
-            await member.add_roles(role, reason='emoji_role_add')
-
-        if payload.event_type == 'REACTION_REMOVE':
-            await member.remove_roles(role, reason='emoji_role_remove')
-
-    # Otherwise remove reaction from the message
-    else:
-        await message.remove_reaction(payload.emoji, member)
 
 # Parser regular expressions list
 parsers = [
@@ -191,113 +135,10 @@ async def on_message(message: discord.Message):
                     if parser['function'] is not handlers.youtube:
                         await logs_channel.send(**kwargs)
 
-@bot.event
-async def on_raw_reaction_add(payload):
-    '''
-    Reaction hander (adding reactions)
-    '''
-    await handle_reaction(payload)
-
-@bot.event
-async def on_raw_reaction_remove(payload):
-    '''
-    Reaction hander (removing reactions)
-    '''
-    await handle_reaction(payload)
-
-@bot.bridge_command(name='tiktok')
-async def _tiktok(ctx):
-    '''
-    Posts a random tiktok from sourcebot's collection.
-    '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
-    tiktok = client['sourcebot']['tiktok_db'].aggregate([{ "$sample": { "size": 1 } }]).next()
-    await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
-
-@bot.bridge_command(name='friday')
-async def _friday(ctx):
-    '''
-    Today is Friday in California!
-    '''
-    await ctx.respond(f"{config['media']['url']}/discord-friday.mp4")
-
-@bot.bridge_command(name='flat')
-async def _flat(ctx):
-    '''
-    Today is Flat Fuck Friday!
-    '''
-    await ctx.respond(f"{config['media']['url']}/discord-flat.mov")
-
-@bot.bridge_command(name='pies')
-async def _pies(ctx):
-    '''
-    Initiate dog protolol.
-    '''
-    await ctx.respond(f"{config['media']['url']}/protocol-dog.jpg")
-
-@bot.bridge_command(name='siec')
-async def _siec(ctx):
-    '''
-    Robicie coś z siecią?.
-    '''
-    await ctx.respond(f"{config['media']['url']}/network.png")
-
-@bot.bridge_command(name='summon')
-async def _summon(ctx):
-    '''
-    Summon DI.
-    '''
-    role_id = 1364549167619375114 # Role ID to mention
-    await ctx.respond(f"<@&{role_id}> summon", allowed_mentions=discord.AllowedMentions(roles=True))
-
-@bot.bridge_command(name='ping')
-async def _ping(ctx, addr: str):
-    '''
-    Ping ip address or hostname.
-    '''
-    from ping3 import ping
-    r = ping(addr)
-    await ctx.respond(f"Ping to {addr} result: {r}")
-
-# Roles commands
-@bot.bridge_command(name='list')
-@has_permissions(administrator=True)
-async def _list(ctx):
-    '''
-    Returns current list of roles configured for sourcebot.
-    '''
-    embed = discord.Embed(title="Current settings", colour=discord.Colour(0x8ba089))
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
-    for role in client['sourcebot']['roles'].find({'guild': ctx.guild.id}):
-        embed.add_field(name=role['emoji'], value=f"<@&{role['role']}>")
-    await ctx.respond(embed=embed)
-
-@bot.bridge_command(name='add')
-@has_permissions(administrator=True)
-async def _add(ctx, emoji: str, *, role: discord.Role):
-    '''
-    Adds a new role reaction to the sourcebot.
-    '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
-    client['sourcebot']['roles'].insert_one({
-        'guild': ctx.guild.id,
-        'emoji': emoji,
-        'role': role.id
-    })
-    await ctx.respond(f"{bot.user.name} added: {emoji} -> {role}")
-
-@bot.bridge_command(name = 'remove')
-@has_permissions(administrator=True)
-async def _remove(ctx, emoji: str):
-    '''
-    Removes a role reaction from sourcebot list.
-    '''
-    client = MongoClient('mongodb://127.0.0.1/sourcebot')
-    client['sourcebot']['roles'].delete_one({
-        'guild': ctx.guild.id,
-        'emoji': emoji
-    })
-    await ctx.respond(f"{bot.user.name} deleted: {emoji}")
+# Load cogs
+bot.load_extension('cogs.fun')
+bot.load_extension('cogs.roles')
+bot.load_extension('cogs.reminders')
 
 if __name__ == '__main__':
     # Main Loop
