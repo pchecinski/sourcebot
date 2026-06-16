@@ -205,66 +205,6 @@ async def on_raw_reaction_remove(payload):
     '''
     await handle_reaction(payload)
 
-TARGET = "https://baraag.net"
-
-import csv
-
-# Various Commands
-@bot.bridge_command(name="scan_guild")
-@is_owner()
-async def _scan_guild(ctx):
-    await ctx.defer()
-
-    rows = []
-    deleted = 0
-
-    for channel in ctx.guild.text_channels:
-        if channel.id == 1139247508468535306:
-            continue
-
-        try:
-            async for message in channel.history(limit=None):
-                if TARGET in message.content:
-                    # Save info BEFORE deletion
-                    rows.append({
-                        "message_id": message.id,
-                        "author": f"{message.author} ({message.author.id})",
-                        "guild": ctx.guild.name,
-                        "channel": channel.name,
-                        "content": message.content
-                    })
-
-                    # Delete message
-                    await message.delete()
-                    deleted += 1
-
-                    # Be nice to rate limits
-                    await asyncio.sleep(0.3)
-
-        except discord.Forbidden:
-            continue
-        except discord.HTTPException as e:
-            print(f"Failed in {channel}: {e}")
-
-    # Write CSV
-    filename = f"deleted_messages_{ctx.guild.id}.csv"
-    with open(filename, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=["message_id", "author", "guild", "channel", "content"]
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-
-    # Send result
-    if rows:
-        await ctx.respond(
-            content=f"✅ Deleted **{deleted}** messages. CSV attached.",
-            file=discord.File(filename)
-        )
-    else:
-        await ctx.respond("❌ No matching messages found.")
-
 @bot.bridge_command(name='tiktok')
 async def _tiktok(ctx):
     '''
