@@ -8,7 +8,7 @@ import os
 import shlex
 import shutil
 from atproto import Client
-from re import sub, search
+from re import sub
 from tempfile import TemporaryDirectory
 from time import perf_counter
 import re
