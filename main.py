@@ -1,4 +1,4 @@
-#!/var/lib/sourcebot/env/bin/python3
+#!/opt/sourcebot/env/bin/python3
 # -*- coding: utf-8 -*-
 '''
 Main source code / entry point for sourcebot

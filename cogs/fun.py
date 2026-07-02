@@ -10,7 +10,7 @@ class Fun(commands.Cog):
     @bridge.bridge_command(name='tiktok')
     async def _tiktok(self, ctx):
         '''Posts a random tiktok from sourcebot's collection.'''
-        client = MongoClient('mongodb://127.0.0.1/sourcebot')
+        client = MongoClient(config['mongo']['uri'])
         tiktok = client['sourcebot']['tiktok_db'].aggregate([{"$sample": {"size": 1}}]).next()
         await ctx.respond(f"{config['media']['url']}/tiktok-{tiktok['tiktok_id']}.mp4")
 

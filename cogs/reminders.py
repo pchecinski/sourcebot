@@ -2,9 +2,10 @@ import asyncio
 import discord
 from datetime import datetime
 from discord.ext import bridge, commands
+from config import config
 from pymongo import MongoClient
 
-client = MongoClient('mongodb://127.0.0.1/sourcebot')
+client = MongoClient(config['mongo']['uri'])
 reminders_col = client['sourcebot']['reminders']
 
 class Reminders(commands.Cog):
