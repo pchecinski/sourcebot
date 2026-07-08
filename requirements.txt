@@ -15,7 +15,7 @@ charset-normalizer==3.4.7
 click==8.4.2
 cryptography==46.0.7
 dnspython==2.8.0
-faapi==3.12.7
+feedparser==6.0.12
 frozenlist==1.8.0
 h11==0.16.0
 httpcore==1.0.9
@@ -36,6 +36,7 @@ pysaucenao==2.0.1
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
 requests==2.34.2
+sgmllib3k==1.0.0
 six==1.17.0
 soupsieve==2.8.4
 typing-inspection==0.4.2

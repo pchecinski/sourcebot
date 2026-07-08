@@ -16,7 +16,6 @@ import re
 # Third-party libraries
 import aiofiles
 import discord
-import faapi
 import xmltodict
 from aiohttp import ClientSession, BasicAuth, ContentTypeError
 from pymongo import MongoClient
@@ -159,20 +158,15 @@ async def furaffinity(**kwargs):
     # Submission ID from params
     submission_id = kwargs['match'].group(1)
 
-    cookies = [
-        {"name": "a", "value": config['furaffinity']['cookie']['a']},
-        {"name": "b", "value": config['furaffinity']['cookie']['b']},
-    ]
+    async with ClientSession() as session:
+        async with session.get(f"https://www.xfuraffinity.net/view/{submission_id}") as response:
+            match = re.search(
+                r'<meta\s+property="og:image:secure_url"\s+content="([^"]+)"',
+                await response.text(),
+            )
+            image_url = match.group(1) if match else None
 
-    api = faapi.FAAPI(cookies)
-    submission, _ = api.submission(submission_id)
-
-    if submission.rating == 'General':
-        return
-
-    embed = discord.Embed(title=f"{submission.title} by {submission.author}", color=discord.Color(0xFAAF3A))
-    embed.set_image(url=submission.file_url)
-    return [ { 'embed': embed } ]
+    return [ { 'content' : image_url } ]
 
 async def booru(**kwargs):
     '''

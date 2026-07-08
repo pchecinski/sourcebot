@@ -20,11 +20,6 @@ media:
 e621:
   username: "-"
   api_key: "-"  
-  
-furaffinity:
-  cookie:
-    a: "-"
-    b: "-"
 
 inkbunny:
   username: "-"
