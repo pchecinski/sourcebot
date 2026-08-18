@@ -34,6 +34,11 @@ class Fun(commands.Cog):
         '''Robicie coś z siecią?'''
         await ctx.respond(f"{config['media']['url']}/network.png")
 
+    @bridge.bridge_command(name='cinema')
+    async def _siec(self, ctx):
+        '''Absolute cinema'''
+        await ctx.respond(f"{config['media']['url']}/absolute-cinema.png")
+
     @bridge.bridge_command(name='summon')
     async def _summon(self, ctx):
         '''Summon DI.'''

@@ -3,6 +3,9 @@
 /config/*.secret
 /subproject/*
 
+# Ignore cookies used by yt-dl
+/cookies/*
+
 # Ignore logs
 *.log
 

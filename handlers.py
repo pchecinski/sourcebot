@@ -390,13 +390,61 @@ async def instagram(**kwargs):
     reel_id = kwargs['match'].group(1)
 
     with TemporaryDirectory() as tmpdir:
-        async with ClientSession() as session:
-            async with aiofiles.open(f"{tmpdir}/{reel_id}.mp4", "wb") as file:
-                async with session.get(f"https://www.vxinstagram.com/videos/{reel_id}") as response:
-                    await file.write(await response.read())
-                    shutil.move(f"{tmpdir}/{reel_id}.mp4", f"{config['media']['path']}/instagram-{reel_id}.mp4")
+        source = f"source-{reel_id}.mp4"
+        filename = f"{reel_id}.mp4"
 
-    return [ { 'content': f"{config['media']['url']}/instagram-{reel_id}.mp4" } ]
+        ydl_opts = {
+            'cookiefile': 'code/cookies/www.instagram.com_cookies.txt',
+            'format': 'bestvideo+bestaudio/best',
+            'merge_output_format': 'mp4',
+            'quiet': True,
+            'noprogress': True,
+            'outtmpl': f"{tmpdir}/source-{reel_id}.%(ext)s",
+        }
+
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([
+                f"https://www.instagram.com/reel/{reel_id}/"
+            ])
+
+        args = [
+            'ffmpeg',
+            '-loglevel', 'fatal',
+            '-hide_banner',
+            '-y',
+            '-i', source,
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            filename,
+        ]
+
+        ffmpeg = await asyncio.create_subprocess_exec(
+            *args,
+            cwd=os.path.abspath(tmpdir)
+        )
+
+        await ffmpeg.wait()
+
+        if ffmpeg.returncode != 0:
+            raise RuntimeError(
+                f"ffmpeg failed with exit code {ffmpeg.returncode}"
+            )
+
+        shutil.move(
+            f"{tmpdir}/{filename}",
+            f"{config['media']['path']}/instagram-{filename}"
+        )
+
+        async with ClientSession() as session:
+            async with session.get(f"{config['media']['url']}/instagram-{filename}") as response:
+                print(f"{config['media']['url']}/instagram-{filename} - {response.status=} - check!")
+
+    return [{
+        'content': f"{config['media']['url']}/instagram-{filename}"
+    }]
 
 async def bsky(**kwargs):
     '''
@@ -476,6 +524,7 @@ async def youtube(**kwargs):
             'format': 'bestvideo+bestaudio/best',
             'merge_output_format': 'mp4',
             'quiet': True,
+            'noprogress': True,
             'extract_flat': True,
             'outtmpl': f"{tmpdir}/{video}.%(ext)s"
         }
