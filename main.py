@@ -12,11 +12,6 @@ import discord
 from discord.ext import bridge
 from pysaucenao import SauceNao
 
-# atproto ignore warning
-import warnings
-from pydantic import warnings as pw
-warnings.filterwarnings("ignore", category=pw.UnsupportedFieldAttributeWarning)
-
 # Local modules
 import handlers
 from config import config
@@ -40,7 +35,7 @@ parsers = [
     { 'pattern': re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart },
     { 'pattern': re.compile(r"(https:\/\/(?:www\.)*reddit.com\/r\/.+?\/comments\/.+?\/.+?)\/\?*"), 'function': handlers.reddit },
-    { 'pattern': re.compile(r"\.instagram\.com/reels?/([\w-]+)"), 'function': handlers.instagram },
+    { 'pattern': re.compile(r"(https?:\/\/(?:www\.)?instagram\.com\/(?:reel|reels|p|tv|share)\/([A-Za-z0-9_\-]+))"), 'function': handlers.instagram },
     { 'pattern': re.compile(r"https:\/\/bsky.app\/profile\/([.\w]+)\/post\/(\w+)"), 'function': handlers.bsky }
 ]
 

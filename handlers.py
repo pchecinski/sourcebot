@@ -387,15 +387,23 @@ async def instagram(**kwargs):
     '''
     Handler for instagram
     '''
-    reel_id = kwargs['match'].group(1)
+    reel_url = kwargs['match'].group(1)
+    reel_id = kwargs['match'].group(2)
+
+    debug = {
+        'best_size_mb': 0,
+        'st_size': 0,
+        'response_code': 0
+    }
+
 
     with TemporaryDirectory() as tmpdir:
         source = f"source-{reel_id}.mp4"
-        filename = f"{reel_id}.mp4"
+        filename = f"instagram-{reel_id}.mp4"
 
         ydl_opts = {
             'cookiefile': 'code/cookies/www.instagram.com_cookies.txt',
-            'format': 'bestvideo+bestaudio/best',
+            'format': 'bv*+ba/best',
             'merge_output_format': 'mp4',
             'quiet': True,
             'noprogress': True,
@@ -403,47 +411,45 @@ async def instagram(**kwargs):
         }
 
         with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([
-                f"https://www.instagram.com/reel/{reel_id}/"
-            ])
+            info = ydl.extract_info(reel_url, download=False)
 
-        args = [
-            'ffmpeg',
-            '-loglevel', 'fatal',
-            '-hide_banner',
-            '-y',
-            '-i', source,
-            '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '23',
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            filename,
-        ]
+            parts = info.get("requested_formats") or [info]
+            total = 0
+            for part in parts:
+                size = part.get("filesize") or part.get("filesize_approx")
+                if size is None:
+                    break
+                total += size
 
-        ffmpeg = await asyncio.create_subprocess_exec(
-            *args,
-            cwd=os.path.abspath(tmpdir)
-        )
+            best_size_mb = total / 1024 / 1024
+            debug['best_size_mb'] = best_size_mb
 
-        await ffmpeg.wait()
+            if best_size_mb > 100:
+                ydl_opts.format =  (
+                    "bv*[width<=720]+ba/bv*[height<=720]+ba/"
+                    "best[width<=720]/best[height<=720]/best"
+                )
 
-        if ffmpeg.returncode != 0:
-            raise RuntimeError(
-                f"ffmpeg failed with exit code {ffmpeg.returncode}"
-            )
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download(reel_url)
 
         shutil.move(
-            f"{tmpdir}/{filename}",
-            f"{config['media']['path']}/instagram-{filename}"
+            f"{tmpdir}/{source}",
+            f"{config['media']['path']}/{filename}"
         )
 
+        from pathlib import Path
+        f = Path(f"{config['media']['path']}/{filename}")
+        debug['st_size'] = f.stat().st_size / 1024 / 1024
+
         async with ClientSession() as session:
-            async with session.get(f"{config['media']['url']}/instagram-{filename}") as response:
-                print(f"{config['media']['url']}/instagram-{filename} - {response.status=} - check!")
+            async with session.get(f"{config['media']['url']}/{filename}") as response:
+                debug['response_code'] = response.status
+
+        print(f"{debug=}")
 
     return [{
-        'content': f"{config['media']['url']}/instagram-{filename}"
+        'content': f"{config['media']['url']}/{filename}"
     }]
 
 async def bsky(**kwargs):
