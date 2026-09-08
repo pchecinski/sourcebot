@@ -55,7 +55,11 @@ async def inkbunny(**kwargs):
     submission_id = kwargs['match'].group(1)
     page = kwargs['match'].group(2)
 
-    async with ClientSession() as session:
+    headers = {
+        "Referer": "https://inkbunny.net"
+    }
+
+    async with ClientSession(headers=headers) as session:
         # Log in to API and get session ID
         async with session.get("https://inkbunny.net/api_login.php",
                 params = { 'username': config['inkbunny']['username'], 'password': config['inkbunny']['password'] }
@@ -425,7 +429,7 @@ async def instagram(**kwargs):
             debug['best_size_mb'] = best_size_mb
 
             if best_size_mb > 100:
-                ydl_opts.format =  (
+                ydl_opts['format'] =  (
                     "bv*[width<=720]+ba/bv*[height<=720]+ba/"
                     "best[width<=720]/best[height<=720]/best"
                 )
