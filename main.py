@@ -10,6 +10,7 @@ import re
 # Third-party libraries
 import discord
 from discord.ext import bridge
+from pymongo import MongoClient
 from pysaucenao import SauceNao
 
 # Local modules
@@ -47,6 +48,29 @@ parsers_new = [
 @bot.event
 async def on_ready():
     print('Client is ready!')
+
+async def handle_snail(message: discord.Message, match: re.Match):
+    if isinstance(message.channel, discord.DMChannel):
+        return
+
+    client = MongoClient(config['mongo']['uri'])
+    snail_col = client['sourcebot']['snail']
+
+    result = snail_col.find_one({
+        'guild_id': message.guild.id,
+        'match': match.group(0)
+    })
+
+    if result and message.author.get_role(861404736774078465):
+        await message.add_reaction('🐌')
+
+    else:
+        snail_col.insert_one({
+            'guild_id': message.guild.id,
+            'channel_id': message.channel.id,
+            'message_id': message.id,
+            'match': match.group(0)
+        })
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -102,6 +126,7 @@ async def on_message(message: discord.Message):
             files = await parser['function'](
                 match = match, message = message
             )
+            await handle_snail(message, match)
 
             if isinstance(files, list):
                 # Debug logs
@@ -118,6 +143,7 @@ async def on_message(message: discord.Message):
             output = await parser['function'](
                 match = match, message = message
             )
+            await handle_snail(message, match)
 
             if isinstance(output, list):
                 # Debug logs

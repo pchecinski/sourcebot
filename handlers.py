@@ -242,14 +242,6 @@ async def mastodon(**kwargs):
         embeds.append(embed)
     return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
 
-twitter_ai = [
-    'AZoomerrr'
-]
-
-bsky_ai = [
-    'l3nkart.bsky.social'
-]
-
 async def twitter(**kwargs):
     '''
     Hander for twitter.com
@@ -261,18 +253,20 @@ async def twitter(**kwargs):
     tweet_id = tweet_path.split('/')[-1]
 
     async with ClientSession() as session:
-        async with session.get(f"https://api.fxtwitter.com/sourcebot/status/{tweet_id}") as response:
-            tweet_data = await response.json()
+        for i in range(3):
+            async with session.get(f"https://api.fxtwitter.com/2/status/{tweet_id}") as response:
+                tweet_data = await response.json()
+                if tweet_data['code'] == 200:
+                    break
+                else:
+                    print(f'retrying {tweet_id=}, {tweet_data['code']=}, {i+1}/3')
+                    await asyncio.sleep(i)
 
-        if tweet_data['code'] != 200 or 'tweet' not in tweet_data or 'media' not in tweet_data['tweet']:
+        if 'status' not in tweet_data or 'media' not in tweet_data['status']:
+            print(f"skipping {tweet_id=}, {tweet_data=}")
             return
 
-        if tweet_data['tweet']['author']['screen_name'] in twitter_ai:
-            await kwargs['message'].edit(suppress=True)
-            await kwargs['message'].add_reaction("<:ai:1486104620471160964>")
-            return
-
-        media = tweet_data['tweet']['media']
+        media = tweet_data['status']['media']
 
         links = []
         if 'videos' in media:
@@ -461,11 +455,6 @@ async def bsky(**kwargs):
     Handler for bsky videos
     '''
     user_handle, post_id = kwargs['match'].groups()
-
-    if user_handle in bsky_ai:
-        await kwargs['message'].edit(suppress=True)
-        await kwargs['message'].add_reaction("<:ai:1486104620471160964>")
-        return
 
     # Initialize the client and authenticate
     client = Client()
