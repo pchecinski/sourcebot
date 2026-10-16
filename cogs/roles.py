@@ -1,6 +1,6 @@
 # cogs/roles.py
 import discord
-from discord.ext import bridge, commands
+from discord.ext import commands
 from discord.ext.commands import has_permissions
 from pymongo import MongoClient
 from config import config
@@ -59,7 +59,7 @@ class Roles(commands.Cog):
         await self.handle_reaction(payload)
 
     # commands
-    @bridge.bridge_command(name='list')
+    @commands.slash_command(name='role_list')
     @has_permissions(administrator=True)
     async def _list(self, ctx):
         '''Returns current list of roles configured for sourcebot.'''
@@ -69,7 +69,7 @@ class Roles(commands.Cog):
             embed.add_field(name=role['emoji'], value=f"<@&{role['role']}>")
         await ctx.respond(embed=embed)
 
-    @bridge.bridge_command(name='add')
+    @commands.slash_command(name='role_add')
     @has_permissions(administrator=True)
     async def _add(self, ctx, emoji: str, *, role: discord.Role):
         '''Adds a new role reaction to sourcebot.'''
@@ -81,7 +81,7 @@ class Roles(commands.Cog):
         })
         await ctx.respond(f"{self.bot.user.name} added: {emoji} -> {role}")
 
-    @bridge.bridge_command(name='remove')
+    @commands.slash_command(name='role_remove')
     @has_permissions(administrator=True)
     async def _remove(self, ctx, emoji: str):
         '''Removes a role reaction from sourcebot list.'''

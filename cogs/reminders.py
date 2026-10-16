@@ -1,7 +1,7 @@
 import asyncio
 import discord
 from datetime import datetime
-from discord.ext import bridge, commands
+from discord.ext import commands
 from config import config
 from pymongo import MongoClient
 
@@ -41,7 +41,7 @@ class Reminders(commands.Cog):
         if count:
             print(f"[reminders] Rescheduled {count} pending reminder(s).")
 
-    @bridge.bridge_command(name='remind')
+    @commands.slash_command(name='remind')
     async def _remind(self, ctx, *, args: str):
         '''Set a reminder. Usage: /remind 22:00 message or /remind 2026-06-17 22:00 message'''
         now = datetime.now()
@@ -92,7 +92,7 @@ class Reminders(commands.Cog):
         self._schedule(reminder)
         await ctx.respond(f"✅ I'll remind you at **{target.strftime('%Y-%m-%d %H:%M')}**: *{message}*")
 
-    @bridge.bridge_command(name='reminders')
+    @commands.slash_command(name='reminders')
     async def _reminders(self, ctx):
         '''List your pending reminders.'''
         pending = list(reminders_col.find({
