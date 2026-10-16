@@ -6,10 +6,13 @@ Main source code / entry point for sourcebot
 
 # Python standard libraries
 import re
+import hashlib
+import pathlib
 
 # Third-party libraries
 import discord
-from discord.ext import bridge
+from discord.ext import commands
+from aiohttp import ClientSession
 from pymongo import MongoClient
 from pysaucenao import SauceNao
 
@@ -18,8 +21,7 @@ import handlers
 from config import config
 
 # Prepare bot with intents
-intents = discord.Intents.all()
-bot = bridge.Bot(command_prefix='$', intents=intents)
+bot = commands.Bot(intents=discord.Intents.all())
 
 # Spoiler regular expression
 spoiler_regex = re.compile(r"(\|\|.*?\|\||\<.*?\>|\`.*?\`)", re.DOTALL)
@@ -47,7 +49,37 @@ parsers_new = [
 
 @bot.event
 async def on_ready():
-    print('Client is ready!')
+    AVATAR_DIR = pathlib.Path("code/config/avatars")
+
+    for guild in bot.guilds:
+        avatar_path = AVATAR_DIR / f"{guild.id}.png"
+        me = guild.me
+
+        if avatar_path.is_file():
+            desired_avatar = avatar_path.read_bytes()
+            desired_hash = hashlib.sha256(desired_avatar).hexdigest()
+
+            if me.guild_avatar is not None:
+                async with ClientSession() as session:
+                    async with session.get(me.guild_avatar.url) as response:
+                        current_avatar = await response.read()
+
+                current_hash = hashlib.sha256(current_avatar).hexdigest()
+
+                if current_hash == desired_hash:
+                    print(f"{guild.name} ({guild.id}): custom avatar unchanged")
+                    continue
+
+            await me.edit(avatar=desired_avatar)
+            print(f"{guild.name} ({guild.id}): custom avatar set")
+        else:
+            if me.guild_avatar is not None:
+                await me.edit(avatar=None)
+                print(f"{guild.name} ({guild.id}): custom avatar removed")
+            else:
+                print(f"{guild.name} ({guild.id}): using global avatar")
+
+    print("Client is ready!")
 
 async def handle_snail(message: discord.Message, match: re.Match):
     if isinstance(message.channel, discord.DMChannel):
@@ -61,7 +93,7 @@ async def handle_snail(message: discord.Message, match: re.Match):
         'match': match.group(0)
     })
 
-    if result and message.author.get_role(861404736774078465):
+    if result:
         await message.add_reaction('🐌')
 
     else:
@@ -79,9 +111,6 @@ async def on_message(message: discord.Message):
     '''
     if message.author == bot.user:
         return
-
-    # Process prefix commands
-    await bot.process_commands(message)
 
     # Ignore text in valid spoiler tag
     content = re.sub(spoiler_regex, '', message.content)
