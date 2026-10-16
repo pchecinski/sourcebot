@@ -253,14 +253,14 @@ async def twitter(**kwargs):
     tweet_id = tweet_path.split('/')[-1]
 
     async with ClientSession() as session:
-        for i in range(3):
+        for i in range(1,6):
             async with session.get(f"https://api.fxtwitter.com/2/status/{tweet_id}") as response:
                 tweet_data = await response.json()
                 if tweet_data['code'] == 200:
                     break
                 else:
-                    print(f'retrying {tweet_id=}, {tweet_data['code']=}, {i+1}/3')
-                    await asyncio.sleep(i)
+                    print(f'retrying {tweet_id=}, {tweet_data['code']=}, {i}/5')
+                    await asyncio.sleep(i * 2)
 
         if 'status' not in tweet_data or 'media' not in tweet_data['status']:
             print(f"skipping {tweet_id=}, {tweet_data=}")
