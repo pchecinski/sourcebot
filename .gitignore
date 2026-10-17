@@ -2,6 +2,8 @@
 /config/*.yml
 /config/*.secret
 /config/avatars/*
+/config/banners/*
+/config/nicknames/*
 /subproject/*
 
 # Ignore cookies used by yt-dl

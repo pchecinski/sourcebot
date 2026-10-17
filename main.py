@@ -37,7 +37,7 @@ parsers = [
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
     { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart },
-    { 'pattern': re.compile(r"(https:\/\/(?:www\.)*reddit.com\/r\/.+?\/comments\/.+?\/.+?)\/\?*"), 'function': handlers.reddit },
+    # { 'pattern': re.compile(r"(https:\/\/(?:www\.)*reddit.com\/r\/.+?\/comments\/.+?\/.+?)\/\?*"), 'function': handlers.reddit },
     { 'pattern': re.compile(r"(https?:\/\/(?:www\.)?instagram\.com\/(?:reel|reels|p|tv|share)\/([A-Za-z0-9_\-]+))"), 'function': handlers.instagram },
     { 'pattern': re.compile(r"https:\/\/bsky.app\/profile\/([.\w]+)\/post\/(\w+)"), 'function': handlers.bsky }
 ]
@@ -49,35 +49,45 @@ parsers_new = [
 
 @bot.event
 async def on_ready():
-    AVATAR_DIR = pathlib.Path("code/config/avatars")
+    CONFIG_DIR = pathlib.Path("code/config")
+    settings = (
+        ("avatar", CONFIG_DIR / "avatars", "guild_avatar", "avatar", ".png"),
+        ("banner", CONFIG_DIR / "banners", "guild_banner", "banner", ".png"),
+        ("nickname", CONFIG_DIR / "nicknames", "nick", "nick", ".txt"),
+    )
 
-    for guild in bot.guilds:
-        avatar_path = AVATAR_DIR / f"{guild.id}.png"
-        me = guild.me
+    async with ClientSession() as session:
+        for guild in bot.guilds:
+            me = guild.me
 
-        if avatar_path.is_file():
-            desired_avatar = avatar_path.read_bytes()
-            desired_hash = hashlib.sha256(desired_avatar).hexdigest()
+            for name, directory, attribute, parameter, extension in settings:
+                path = directory / f"{guild.id}{extension}"
+                current = getattr(me, attribute)
 
-            if me.guild_avatar is not None:
-                async with ClientSession() as session:
-                    async with session.get(me.guild_avatar.url) as response:
-                        current_avatar = await response.read()
+                if path.is_file():
+                    desired = path.read_text(encoding="utf-8").strip() if name == "nickname" else path.read_bytes()
 
-                current_hash = hashlib.sha256(current_avatar).hexdigest()
+                    if name == "nickname":
+                        if current == (desired or None):
+                            print(f"{guild.name} ({guild.id}): nickname unchanged")
+                            continue
+                    else:
+                        if current is not None:
+                            async with session.get(current.url) as response:
+                                response.raise_for_status()
+                                current_bytes = await response.read()
 
-                if current_hash == desired_hash:
-                    print(f"{guild.name} ({guild.id}): custom avatar unchanged")
-                    continue
+                            if hashlib.sha256(current_bytes).digest() == hashlib.sha256(desired).digest():
+                                print(f"{guild.name} ({guild.id}): {name} unchanged")
+                                continue
 
-            await me.edit(avatar=desired_avatar)
-            print(f"{guild.name} ({guild.id}): custom avatar set")
-        else:
-            if me.guild_avatar is not None:
-                await me.edit(avatar=None)
-                print(f"{guild.name} ({guild.id}): custom avatar removed")
-            else:
-                print(f"{guild.name} ({guild.id}): using global avatar")
+                    await me.edit(**{parameter: desired or None})
+                    print(f"{guild.name} ({guild.id}): {name} set")
+                elif current is not None:
+                    await me.edit(**{parameter: None})
+                    print(f"{guild.name} ({guild.id}): {name} removed")
+                else:
+                    print(f"{guild.name} ({guild.id}): default {name}")
 
     print("Client is ready!")
 
