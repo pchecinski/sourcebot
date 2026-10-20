@@ -18,6 +18,7 @@ import aiofiles
 import discord
 import xmltodict
 from aiohttp import ClientSession, BasicAuth, ContentTypeError
+from bs4 import BeautifulSoup
 from pymongo import MongoClient
 from yt_dlp import YoutubeDL
 
@@ -27,24 +28,30 @@ from config import config
 # Source fetching
 async def pixiv(**kwargs):
     '''
-    Hander for pixiv.net
+    Handler for pixiv.net via Phixiv
     '''
 
-    # Illustration ID from params
     illust_id = kwargs['match'].group(1)
-
-    print(illust_id)
+    url = f'https://www.phixiv.net/en/artworks/{illust_id}'
 
     async with ClientSession() as session:
-        async with session.get(f"https://www.phixiv.net/api/info?id={illust_id}") as response:
-            data = await response.json()
+        async with session.get(url) as response:
+            response.raise_for_status()
+            html = await response.text()
 
-    embeds = []
-    for index, url in enumerate(data['image_proxy_urls']):
-        embed = discord.Embed(title=f"{data['title']} {index + 1}/{len(data['image_proxy_urls'])} by {data['author_name']}", color=discord.Color(0xFCE4F1))
-        embed.set_image(url=url)
-        embeds.append(embed)
-    return [ { 'embeds': embeds[i:i+10] } for i in range(0, len(embeds), 10) ]
+        soup = BeautifulSoup(html, 'html.parser')
+
+        title = soup.find('meta', property='og:title')['content']
+        image_url = soup.find('meta', property='og:image')['content']
+
+        embed = discord.Embed(
+            title=title,
+            color=discord.Color(0xFCE4F1),
+            url=f'https://www.pixiv.net/en/artworks/{illust_id}',
+        )
+        embed.set_image(url=image_url)
+
+    return [{'embeds': [embed]}]
 
 async def inkbunny(**kwargs):
     '''
@@ -94,32 +101,6 @@ async def inkbunny(**kwargs):
                 files.append(path)
     
     return files
-
-async def e621(**kwargs):
-    '''
-    Hander for e621.net
-    '''
-
-    # Skip source for already embeded posts
-    if kwargs['message'].embeds and kwargs['message'].embeds[0].thumbnail.url is not discord.Embed.Empty:
-        return
-
-    # Post ID from params
-    post_id = kwargs['match'].group(1)
-
-    async with ClientSession(auth = BasicAuth(config['e621']['username'], config['e621']['api_key'])) as session:
-        session.headers.update({
-            'User-Agent': f"sourcebot by {config['e621']['username']}"
-        })
-
-        # Get image data using API Endpoint
-        async with session.get(f"https://e621.net/posts/{post_id}.json") as response:
-            data = await response.json()
-            post = data['post']
-
-    embed = discord.Embed(title=f"Picture by {post['tags']['artist'][0]}", color=discord.Color(0x00549E))
-    embed.set_image(url=post['sample']['url'])
-    return [ { 'embed': embed } ]
 
 async def e621_pools(**kwargs):
     '''
@@ -352,35 +333,6 @@ async def tiktok(**kwargs):
 
     return [ { 'content': f"{config['media']['url']}/tiktok-{tiktok_id}.mp4" } ]
 
-async def reddit(**kwargs):
-    '''
-    Handler for reddit
-    '''
-
-    async with ClientSession() as session:
-        async with session.get(kwargs['match'].group(1) + '.json') as response:
-            data_raw = await response.json()
-            data = data_raw[0]['data']['children'][0]['data']
-            unique_id = data['subreddit_id'] + data['id']
-            video_url = data['secure_media']['reddit_video']['fallback_url']
-            audio_url = sub(r'DASH_[0-9]+\.', 'DASH_audio.', video_url)
-
-            with TemporaryDirectory() as tmpdir:
-                async with session.get(video_url) as video, session.get(audio_url) as audio:
-                    async with aiofiles.open(f"{tmpdir}/video.mp4", 'wb') as video_f, aiofiles.open(f"{tmpdir}/audio.mp4", 'wb') as audio_f:
-                        await video_f.write(await video.read())
-                        await audio_f.write(await audio.read())
-
-                args = shlex.split(
-                    'ffmpeg -loglevel fatal -hide_banner -y -i video.mp4 -i audio.mp4 -c:v copy -c:a aac output.mp4'
-                )
-                ffmpeg = await asyncio.create_subprocess_exec(*args, cwd=os.path.abspath(tmpdir))
-                await ffmpeg.wait()
-
-                shutil.move(f"{tmpdir}/output.mp4", f"{config['media']['path']}/reddit-{unique_id}.mp4")
-
-    return [ { 'content': f"{config['media']['url']}/reddit-{unique_id}.mp4" } ]
-
 async def instagram(**kwargs):
     '''
     Handler for instagram
@@ -393,7 +345,6 @@ async def instagram(**kwargs):
         'st_size': 0,
         'response_code': 0
     }
-
 
     with TemporaryDirectory() as tmpdir:
         source = f"source-{reel_id}.mp4"
@@ -507,7 +458,6 @@ async def youtube(**kwargs):
     '''
     Youtube downloading via url
     '''
-
     # Youtube video path from params
     video = kwargs['match'].group(1)
 
