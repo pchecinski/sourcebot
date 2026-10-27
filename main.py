@@ -164,7 +164,8 @@ async def on_message(message: discord.Message):
             files = await parser['function'](
                 match = match, message = message
             )
-            await handle_snail(message, match)
+            if parser['function'] is not handlers.youtube:
+                await handle_snail(message, match)
 
             if isinstance(files, list):
                 # Debug logs
@@ -181,7 +182,8 @@ async def on_message(message: discord.Message):
             output = await parser['function'](
                 match = match, message = message
             )
-            await handle_snail(message, match)
+            if parser['function'] is not handlers.youtube:
+                await handle_snail(message, match)
 
             if isinstance(output, list):
                 # Debug logs
