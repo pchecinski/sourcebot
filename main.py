@@ -5,6 +5,7 @@ Main source code / entry point for sourcebot
 '''
 
 # Python standard libraries
+import os
 import re
 import hashlib
 import pathlib
@@ -178,14 +179,39 @@ async def on_message(message: discord.Message):
                 logs_channel = bot.get_channel(config['discord']['logs_channel'])
                 await logs_channel.send(f"```\n{message.author=}\n{message.channel=}\n{match.groups()=}\n```")
 
-                for i in range(0, len(files), 10):
-                    chunk = files[i:i+10]
-                    is_last = i + 10 >= len(files)
+                # 10MB limit per message / file
+                limit = 10 * 1024 * 1024 * 0.95
+
+                # Split files to batches up to 10 files or 10MB, use URLs for too large files
+                batches, current, size, links = [], [], 0, []
+                for file in files:
+                    file_size = os.path.getsize(file)
+                    if file_size > limit:
+                        links.append(f"{config['media']['url']}/{os.path.basename(file)}")
+                        continue
+                    if current and (len(current) == 10 or size + file_size > limit):
+                        batches.append(current)
+                        current, size = [], 0
+                    current.append(file)
+                    size += file_size
+                if current:
+                    batches.append(current)
+
+                # Send files in batches
+                for i, batch in enumerate(batches):
+                    is_last = i == len(batches) - 1
                     await message.channel.send(
                         embed=embed if is_last else None,
-                        files=[discord.File(file) for file in chunk],
+                        files=[discord.File(file) for file in batch],
                     )
-                    await logs_channel.send(files=[discord.File(file) for file in chunk])
+                    await logs_channel.send(files=[discord.File(file) for file in batch])
+
+                if not batches and embed:
+                    await message.channel.send(embed=embed)
+
+                for link in links:
+                    await message.channel.send(link)
+                    await logs_channel.send(link)
 
     # Match and run all supported handers
     for parser in parsers:
