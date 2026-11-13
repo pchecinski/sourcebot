@@ -243,6 +243,20 @@ async def twitter(**kwargs):
                     print(f'retrying {tweet_id=}, {tweet_data['code']=}, {i}/5')
                     await asyncio.sleep(i * 2)
 
+        client = MongoClient(config['mongo']['uri'])
+        ai_col = client['sourcebot']['ai_profiles']
+
+        result = ai_col.find_one({
+            'twitter_id': tweet_data['author']['id']
+        })
+
+        if result:
+            messgage: discord.Message = kwargs['message']
+            await asyncio.sleep(2)
+            await messgage.edit(suppress=True)
+            await messgage.add_reaction('<:ai:1486104620471160964>')
+            return 
+
         if 'status' not in tweet_data or 'media' not in tweet_data['status']:
             print(f"skipping {tweet_id=}, {tweet_data=}")
             return

@@ -32,7 +32,6 @@ parsers = [
     { 'pattern': re.compile(r"(?<=https://www.furaffinity.net/view/)(\w+)"), 'function': handlers.furaffinity },
     { 'pattern': re.compile(r"(gelbooru.com|rule34.xxx)\/.*id\=(\w+)"), 'function': handlers.booru },
     { 'pattern': re.compile(r"https:\/\/(?:(baraag\.net|pawoo\.net)[.@/\w]*)\/(\w+)"), 'function': handlers.mastodon },
-    { 'pattern': re.compile(r"(fx|vx|fixv|fixup|zz)?(?:twitter\.com|x\.com)\/(\w+\/status\/\w+)"), 'function': handlers.twitter },
     { 'pattern': re.compile(r"(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})"), 'function': handlers.youtube },
     { 'pattern': re.compile(r"(https:\/\/(?:(?:v[mt]\.|www\.)tiktok.com(?:\/t)*\/\w+|www.tiktok.com\/@[\w\.]+\/video\/\w+))"), 'function': handlers.tiktok },
     # { 'pattern': re.compile(r"(https:\/\/www.deviantart.com\/[0-9a-zA-z\-\/]+)"), 'function': handlers.deviantart },
@@ -44,10 +43,18 @@ parsers = [
 parsers_new = [
     { 'pattern': re.compile(r"(?<=https://e621.net/pools/)(\w+)"), 'function': handlers.e621_pools },
     { 'pattern': re.compile(r"(?<=https://inkbunny.net/s/)(\w+)(?:-p)?(\d+)?"), 'function': handlers.inkbunny },
+    { 'pattern': re.compile(r"(fx|vx|fixv|fixup|zz)?(?:twitter\.com|x\.com)\/(\w+\/status\/\w+)"), 'function': handlers.twitter },
 ]
 
 @bot.event
 async def on_ready():
+
+    # CHANNEL_ID = 996205960626446336
+
+    # channel = bot.get_channel(CHANNEL_ID) or await bot.fetch_channel(CHANNEL_ID)
+    # msg = await channel.fetch_message(1564997610492788829)
+    # await msg.reply('did someone say robot fucker?')
+
     CONFIG_DIR = pathlib.Path("code/config")
     settings = (
         ("avatar", CONFIG_DIR / "avatars", "guild_avatar", "avatar", ".png"),
@@ -164,8 +171,7 @@ async def on_message(message: discord.Message):
             files = await parser['function'](
                 match = match, message = message
             )
-            if parser['function'] is not handlers.youtube:
-                await handle_snail(message, match)
+            await handle_snail(message, match)
 
             if isinstance(files, list):
                 # Debug logs
@@ -197,6 +203,7 @@ async def on_message(message: discord.Message):
                         await logs_channel.send(**kwargs)
 
 # Load cogs
+bot.load_extension('cogs.ai')
 bot.load_extension('cogs.fun')
 bot.load_extension('cogs.roles')
 bot.load_extension('cogs.reminders')
