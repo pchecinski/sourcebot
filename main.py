@@ -197,21 +197,20 @@ async def on_message(message: discord.Message):
                 if current:
                     batches.append(current)
 
-                # Send files in batches
-                for i, batch in enumerate(batches):
-                    is_last = i == len(batches) - 1
-                    await message.channel.send(
-                        embed=embed if is_last else None,
-                        files=[discord.File(file) for file in batch],
-                    )
-                    await logs_channel.send(files=[discord.File(file) for file in batch])
+                # Send everything to the original channel first, then mirror it to logs
+                for channel in (message.channel, logs_channel):
+                    for i, batch in enumerate(batches):
+                        is_last = i == len(batches) - 1
+                        await channel.send(
+                            embed=embed if is_last else None,
+                            files=[discord.File(file) for file in batch],
+                        )
 
-                if not batches and embed:
-                    await message.channel.send(embed=embed)
+                    if not batches and embed:
+                        await channel.send(embed=embed)
 
-                for link in links:
-                    await message.channel.send(link)
-                    await logs_channel.send(link)
+                    for link in links:
+                        await channel.send(link)
 
     # Match and run all supported handers
     for parser in parsers:
