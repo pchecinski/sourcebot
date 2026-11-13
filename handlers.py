@@ -263,7 +263,7 @@ async def twitter(**kwargs):
 
         media = tweet_data['status']['media']
 
-        links = []
+        files = []
         if 'videos' in media:
             for index, video in enumerate(media['videos']):
                 if video['type'] == 'gif':
@@ -281,25 +281,36 @@ async def twitter(**kwargs):
                         await ffmpeg.wait()
 
                         shutil.move(f"{tmpdir}/{tweet_id}-{index}.gif", f"{config['media']['path']}/tweet-{tweet_id}-{index}.gif")
-                        links.append(f"{config['media']['url']}/tweet-{tweet_id}-{index}.gif")
+                        files.append(f"{config['media']['path']}/tweet-{tweet_id}-{index}.gif")
+                        
                 else:
-                    links.append(video['url'])
+                    path = f"{config['media']['path']}/tweet-{tweet_id}-{index}.mp4"
+                    if not os.path.exists(path):
+                        async with session.get(video['url']) as response, aiofiles.open(path, "wb") as file:
+                            await file.write(await response.read())    
+                    files.append(path)
 
         if 'photos' in media:
             async with session.get(f"https://publish.twitter.com/oembed?url=https://x.com/{tweet_path}") as response:
                 try:
                     oEmbed_data = await response.json()
                     if not is_vx and 'error' in oEmbed_data:
-                        for photos in media['photos']:
-                            links.append(photos['url'])
+                        for index, photo in enumerate(media['photos']):
+                            path = f"{config['media']['path']}/tweet-{tweet_id}-{index}.png"
+                            if not os.path.exists(path):
+                                async with session.get(photo['url']) as response, aiofiles.open(path, "wb") as file:
+                                    await file.write(await response.read())    
+                            files.append(path)
 
                 except ContentTypeError as e:
                     print('ContentTypeError! Forcing.', e.message)
-                    for photos in media['photos']:
-                        links.append(photos['url'])
-
-        if links:
-            return [ { 'content' : "\n".join(links) } ]
+                    for index, photo in enumerate(media['photos']):
+                        path = f"{config['media']['path']}/tweet-{tweet_id}-{index}.png"
+                        if not os.path.exists(path):
+                            async with session.get(photo['url']) as response, aiofiles.open(path, "wb") as file:
+                                await file.write(await response.read())    
+                        files.append(path)
+        return files
 
 async def tiktok(**kwargs):
     '''
