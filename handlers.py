@@ -100,7 +100,7 @@ async def inkbunny(**kwargs):
                         await file.write(await response.read()) 
                 files.append(path)
     
-    return files
+    return files, None
 
 async def e621_pools(**kwargs):
     '''
@@ -133,7 +133,7 @@ async def e621_pools(**kwargs):
                             await file.write(await response.read())    
 
                     files.append(path)
-    return files
+    return files, None
 
 async def furaffinity(**kwargs):
     '''
@@ -255,15 +255,15 @@ async def twitter(**kwargs):
             await asyncio.sleep(2)
             await messgage.edit(suppress=True)
             await messgage.add_reaction('<:ai:1486104620471160964>')
-            return 
+            return None, None
 
         if 'status' not in tweet_data or 'media' not in tweet_data['status']:
             print(f"skipping {tweet_id=}, {tweet_data=}")
-            return
+            return None, None
 
         media = tweet_data['status']['media']
-
         files = []
+
         if 'videos' in media:
             for index, video in enumerate(media['videos']):
                 if video['type'] == 'gif':
@@ -310,7 +310,25 @@ async def twitter(**kwargs):
                             async with session.get(photo['url']) as response, aiofiles.open(path, "wb") as file:
                                 await file.write(await response.read())    
                         files.append(path)
-        return files
+
+        if files:
+            embed = None
+            if tweet_data['status']['text']:
+                embed = discord.Embed(
+                    description=tweet_data['status']['text'], 
+                    color=discord.Color(0x1DA0F2)
+                )
+                embed.set_author(
+                    name=f"{tweet_data['author']['name']} (@{tweet_data['author']['screen_name']})",
+                    icon_url=tweet_data['author']['avatar_url'],
+                    url=f"https://x.com/{tweet_data['author']['screen_name']}"
+                )
+                messgage: discord.Message = kwargs['message']
+                if not isinstance(messgage.channel, discord.DMChannel):
+                    await messgage.edit(suppress=True)
+            return files, embed
+
+        return None, None
 
 async def tiktok(**kwargs):
     '''

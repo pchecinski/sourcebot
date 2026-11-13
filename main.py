@@ -168,7 +168,7 @@ async def on_message(message: discord.Message):
     # Match and run new parser functions
     for parser in parsers_new:
         for match in re.finditer(parser['pattern'], content):
-            files = await parser['function'](
+            files, embed = await parser['function'](
                 match = match, message = message
             )
             await handle_snail(message, match)
@@ -179,8 +179,13 @@ async def on_message(message: discord.Message):
                 await logs_channel.send(f"```\n{message.author=}\n{message.channel=}\n{match.groups()=}\n```")
 
                 for i in range(0, len(files), 10):
-                    await message.channel.send(files=[ discord.File(file) for file in files[i:i+10] ])
-                    await logs_channel.send(files=[ discord.File(file) for file in files[i:i+10] ])
+                    chunk = files[i:i+10]
+                    is_last = i + 10 >= len(files)
+                    await message.channel.send(
+                        embed=embed if is_last else None,
+                        files=[discord.File(file) for file in chunk],
+                    )
+                    await logs_channel.send(files=[discord.File(file) for file in chunk])
 
     # Match and run all supported handers
     for parser in parsers:
