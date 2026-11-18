@@ -243,14 +243,8 @@ async def twitter(**kwargs):
                     print(f'retrying {tweet_id=}, {tweet_data['code']=}, {i}/5')
                     await asyncio.sleep(i * 2)
 
-        client = MongoClient(config['mongo']['uri'])
-        ai_col = client['sourcebot']['ai_profiles']
-
-        result = ai_col.find_one({
-            'twitter_id': tweet_data['author']['id']
-        })
-
-        if result:
+        ai_col = MongoClient(config['mongo']['uri'])['sourcebot']['ai_profiles']
+        if ai_col.find_one({'twitter_id': tweet_data['author']['id']}):
             messgage: discord.Message = kwargs['message']
             await asyncio.sleep(2)
             await messgage.edit(suppress=True)
@@ -291,25 +285,12 @@ async def twitter(**kwargs):
                     files.append(path)
 
         if 'photos' in media:
-            async with session.get(f"https://publish.twitter.com/oembed?url=https://x.com/{tweet_path}") as response:
-                try:
-                    oEmbed_data = await response.json()
-                    if not is_vx and 'error' in oEmbed_data:
-                        for index, photo in enumerate(media['photos']):
-                            path = f"{config['media']['path']}/tweet-{tweet_id}-{index}.png"
-                            if not os.path.exists(path):
-                                async with session.get(photo['url']) as response, aiofiles.open(path, "wb") as file:
-                                    await file.write(await response.read())    
-                            files.append(path)
-
-                except ContentTypeError as e:
-                    print('ContentTypeError! Forcing.', e.message)
-                    for index, photo in enumerate(media['photos']):
-                        path = f"{config['media']['path']}/tweet-{tweet_id}-{index}.png"
-                        if not os.path.exists(path):
-                            async with session.get(photo['url']) as response, aiofiles.open(path, "wb") as file:
-                                await file.write(await response.read())    
-                        files.append(path)
+            for index, photo in enumerate(media['photos']):
+                path = f"{config['media']['path']}/tweet-{tweet_id}-{index}.png"
+                if not os.path.exists(path):
+                    async with session.get(photo['url']) as response, aiofiles.open(path, "wb") as file:
+                        await file.write(await response.read())    
+                files.append(path)
 
         if files:
             embed = None
@@ -468,6 +449,14 @@ async def bsky(**kwargs):
     if not did_match:
         return "Unable to extract DID from post URI."
     user_did = did_match.group(1)
+
+    ai_col = MongoClient(config['mongo']['uri'])['sourcebot']['ai_profiles']
+    if ai_col.find_one({'bsky_did': user_did}):
+        message: discord.Message = kwargs['message']
+        await asyncio.sleep(2)
+        await message.edit(suppress=True)
+        await message.add_reaction('<:ai:1486104620471160964>')
+        return
 
     # Check if the record has an 'embed' and if it's of the expected type (e.g., video)
     if record.embed and hasattr(record.embed, 'video'):
