@@ -194,7 +194,7 @@ async def deviantart(**kwargs):
 
 async def mastodon(**kwargs):
     '''
-    Hander for mastodon (baraag.net, pawoo.net)
+    Hander for mastodon (pawoo.net)
     '''
 
     # post, domain and ID from params
