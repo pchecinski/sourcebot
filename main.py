@@ -7,13 +7,10 @@ Main source code / entry point for sourcebot
 # Python standard libraries
 import os
 import re
-import hashlib
-import pathlib
 
 # Third-party libraries
 import discord
 from discord.ext import commands
-from aiohttp import ClientSession
 from pymongo import MongoClient
 from pysaucenao import SauceNao
 
@@ -49,53 +46,6 @@ parsers_new = [
 
 @bot.event
 async def on_ready():
-
-    # CHANNEL_ID = 996205960626446336
-
-    # channel = bot.get_channel(CHANNEL_ID) or await bot.fetch_channel(CHANNEL_ID)
-    # msg = await channel.fetch_message(1564997610492788829)
-    # await msg.reply('did someone say robot fucker?')
-
-    CONFIG_DIR = pathlib.Path("code/config")
-    settings = (
-        ("avatar", CONFIG_DIR / "avatars", "guild_avatar", "avatar", ".png"),
-        ("banner", CONFIG_DIR / "banners", "guild_banner", "banner", ".png"),
-        ("nickname", CONFIG_DIR / "nicknames", "nick", "nick", ".txt"),
-    )
-
-    async with ClientSession() as session:
-        for guild in bot.guilds:
-            me = guild.me
-
-            for name, directory, attribute, parameter, extension in settings:
-                path = directory / f"{guild.id}{extension}"
-                current = getattr(me, attribute)
-
-                if path.is_file():
-                    desired = path.read_text(encoding="utf-8").strip() if name == "nickname" else path.read_bytes()
-
-                    if name == "nickname":
-                        if current == (desired or None):
-                            print(f"{guild.name} ({guild.id}): nickname unchanged")
-                            continue
-                    else:
-                        if current is not None:
-                            async with session.get(current.url) as response:
-                                response.raise_for_status()
-                                current_bytes = await response.read()
-
-                            if hashlib.sha256(current_bytes).digest() == hashlib.sha256(desired).digest():
-                                print(f"{guild.name} ({guild.id}): {name} unchanged")
-                                continue
-
-                    await me.edit(**{parameter: desired or None})
-                    print(f"{guild.name} ({guild.id}): {name} set")
-                elif current is not None:
-                    await me.edit(**{parameter: None})
-                    print(f"{guild.name} ({guild.id}): {name} removed")
-                else:
-                    print(f"{guild.name} ({guild.id}): default {name}")
-
     print("Client is ready!")
 
 async def handle_snail(message: discord.Message, match: re.Match):
@@ -233,6 +183,7 @@ async def on_message(message: discord.Message):
                         await logs_channel.send(**kwargs)
 
 # Load cogs
+bot.load_extension('cogs.guild_profile')
 bot.load_extension('cogs.ai')
 bot.load_extension('cogs.fun')
 bot.load_extension('cogs.roles')
