@@ -30,7 +30,6 @@ class GuildProfile(commands.Cog):
 
                         if name == "nickname":
                             if current == (desired or None):
-                                print(f"{guild.name} ({guild.id}): nickname unchanged")
                                 continue
                         else:
                                 async with session.get(current.replace(size=4096).url) as response:
@@ -38,7 +37,6 @@ class GuildProfile(commands.Cog):
                                     current_bytes = await response.read()
 
                                 if hashlib.sha256(current_bytes).digest() == hashlib.sha256(desired).digest():
-                                    print(f"{guild.name} ({guild.id}): {name} unchanged")
                                     continue
 
                         await me.edit(**{parameter: desired or None})
@@ -46,8 +44,6 @@ class GuildProfile(commands.Cog):
                     elif current is not None:
                         await me.edit(**{parameter: None})
                         print(f"{guild.name} ({guild.id}): {name} removed")
-                    else:
-                        print(f"{guild.name} ({guild.id}): default {name}")
 
 def setup(bot):
     bot.add_cog(GuildProfile(bot))
