@@ -33,8 +33,7 @@ class GuildProfile(commands.Cog):
                                 print(f"{guild.name} ({guild.id}): nickname unchanged")
                                 continue
                         else:
-                            if current is not None:
-                                async with session.get(current.url) as response:
+                                async with session.get(current.replace(size=4096).url) as response:
                                     response.raise_for_status()
                                     current_bytes = await response.read()
 
